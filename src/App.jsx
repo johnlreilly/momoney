@@ -275,6 +275,8 @@ export default function App() {
   const [marketLoading, setMarketLoading] = useState(false)
   const [liveSignals, setLiveSignals] = useState([])
   const [watchMetrics, setWatchMetrics] = useState([])
+  const [scanStatus, setScanStatus] = useState('')
+  const [scanning, setScanning] = useState(false)
   const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light')
   function toggleTheme() {
     setTheme((prev) => {
@@ -653,32 +655,42 @@ export default function App() {
     const current = dataRef.current
     const watchList = current?.dailyPlans?.find((p) => p.date === selectedDate)?.watchList || ''
     const symbols = parseWatchSymbols(watchList)
-    if (symbols.length === 0) { setPlanStatus('Scan: no symbols in watch list'); return }
+    if (symbols.length === 0) { setScanStatus('No symbols in watch list.'); return }
 
-    setPlanStatus(`Scanning ${symbols.join(', ')}...`)
+    setScanning(true)
+    setScanStatus(`Fetching data for ${symbols.join(', ')}…`)
     const updatedMarketData = { ...marketDataRef.current }
+    const fetchResults = {}
     for (const symbol of symbols) {
       try {
         const [intradayRes, quoteRes] = await Promise.all([
           fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=5min`),
           fetch(`/api/market?type=quote&symbol=${encodeURIComponent(symbol)}`),
         ])
+        const intraday = intradayRes.ok ? await intradayRes.json() : null
+        const quote = quoteRes.ok ? await quoteRes.json() : null
         updatedMarketData[symbol] = {
           ...(updatedMarketData[symbol] || {}),
-          ...(intradayRes.ok ? { intraday: await intradayRes.json() } : {}),
-          ...(quoteRes.ok ? { quote: await quoteRes.json() } : {}),
+          ...(intraday ? { intraday } : {}),
+          ...(quote ? { quote } : {}),
         }
-      } catch {
-        // skip symbol on error
+        fetchResults[symbol] = { intraday: !!intraday, quote: !!quote }
+      } catch (err) {
+        fetchResults[symbol] = { error: err?.message || 'fetch failed' }
       }
     }
+
+    const fetchSummary = symbols.map((s) => {
+      const r = fetchResults[s] || {}
+      if (r.error) return `${s}:error`
+      return `${s}:${r.intraday ? 'intraday✓' : 'intraday✗'} ${r.quote ? 'quote✓' : 'quote✗'}`
+    }).join(' | ')
 
     const { signals, phase } = buildSignals(symbols, updatedMarketData)
     setTradingPhase(phase)
     setLiveSignals(signals)
     autoExecuteSignals(signals, phase, updatedMarketData, selectedDate)
     setLastAutoScan(new Date().toISOString())
-    setPlanStatus(`Scan complete — phase: ${phase} — ${signals.length} signal(s) found for ${symbols.join(', ')}`)
 
     const metrics = []
     for (const symbol of symbols) {
@@ -703,6 +715,8 @@ export default function App() {
       }
     }
     setWatchMetrics(metrics)
+    setScanStatus(`Phase: ${phase} | ${fetchSummary} | ${signals.length} signal(s) | ${metrics.length} gauge(s)`)
+    setScanning(false)
   }
 
   // Keep ref current so the interval always calls the latest version without stale closure
@@ -1125,10 +1139,10 @@ export default function App() {
             <button
               type="button"
               onClick={() => refreshAndScanRef.current?.()}
-              disabled={!dailyPlan || marketLoading}
+              disabled={!dailyPlan || scanning}
               className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 ${t.btnScan}`}
             >
-              Scan now
+              {scanning ? 'Scanning…' : 'Scan now'}
             </button>
           </div>
           {liveSignals.length > 0 ? (
@@ -1201,13 +1215,16 @@ export default function App() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-gray-400">
+                <p className={`text-sm ${t.faint}`}>
                   {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
                     ? 'Hit "Scan now" to load market data.'
                     : 'Symbols are being identified — scan will begin automatically.'}
                 </p>
               )}
             </div>
+          )}
+          {scanStatus && (
+            <p className={`mt-3 text-xs font-mono ${t.faint} border-t ${t.divider} pt-3`}>{scanStatus}</p>
           )}
         </section>
 
