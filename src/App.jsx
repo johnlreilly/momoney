@@ -274,6 +274,7 @@ export default function App() {
   const [planStatus, setPlanStatus] = useState('')
   const [marketLoading, setMarketLoading] = useState(false)
   const [liveSignals, setLiveSignals] = useState([])
+  const [watchMetrics, setWatchMetrics] = useState([])
   const [tradingPhase, setTradingPhase] = useState(updateTradingPhase)
   const [lastAutoScan, setLastAutoScan] = useState(null)
   const dataRef = useRef(null)
@@ -670,6 +671,30 @@ export default function App() {
     autoExecuteSignals(signals, phase, updatedMarketData, selectedDate)
     setLastAutoScan(new Date().toISOString())
     setPlanStatus(`Scan complete — phase: ${phase} — ${signals.length} signal(s) found for ${symbols.join(', ')}`)
+
+    const metrics = []
+    for (const symbol of symbols) {
+      const md = updatedMarketData[symbol]
+      if (!md) continue
+      if (phase === 'pre-market' && md.quote && md.dailySeries?.length > 0) {
+        const raw = ((md.quote.price - md.dailySeries[0].close) / md.dailySeries[0].close) * 100
+        metrics.push({ symbol, label: 'Gap', value: raw, min: -10, max: 10, lowThreshold: -3, highThreshold: 3, unit: '%' })
+      } else if (phase === 'opening-drive' && md.intraday?.length > 0 && md.quote) {
+        const orb = detectORB(md.intraday, 15)
+        if (orb) {
+          const distPct = ((md.quote.price - orb.high) / orb.high) * 100
+          metrics.push({ symbol, label: 'vs ORB High', value: distPct, min: -5, max: 5, lowThreshold: -0.5, highThreshold: 0, unit: '%' })
+        }
+      } else if (phase === 'midday-fade' && md.intraday?.length > 0) {
+        const closes = md.intraday.map((d) => d.close)
+        const rsi = calculateRSI(closes, 14)
+        if (rsi !== null) metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '' })
+      } else if (phase === 'power-hour' && md.quote) {
+        const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
+        metrics.push({ symbol, label: 'Day gain', value: gain, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+      }
+    }
+    setWatchMetrics(metrics)
   }
 
   // Keep ref current so the interval always calls the latest version without stale closure
@@ -1076,11 +1101,56 @@ export default function App() {
               ))}
             </div>
           ) : (
-            <p className="mt-4 text-sm text-slate-500">
-              {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
-                ? 'Waiting for signals — auto-scan runs every 5 min during market hours.'
-                : 'Symbols are being identified — scan will begin automatically.'}
-            </p>
+            <div className="mt-4">
+              {watchMetrics.length > 0 ? (
+                <div className="space-y-4">
+                  <p className="text-xs text-slate-500">Watching — no signal threshold crossed yet</p>
+                  {watchMetrics.map((m) => {
+                    const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
+                    const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
+                    const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
+                    const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
+                    return (
+                      <div key={m.symbol} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="font-semibold text-white">{m.symbol}</span>
+                          <span className={hot ? 'text-amber-300 font-bold' : 'text-slate-400'}>
+                            {m.label}: {m.value.toFixed(1)}{m.unit}
+                            {hot ? ' ⚡' : ''}
+                          </span>
+                        </div>
+                        <div className="relative h-3 rounded-full bg-slate-800 overflow-hidden">
+                          {/* oversold / buy zone */}
+                          <div className="absolute left-0 top-0 h-full bg-green-500/20" style={{ width: `${lowPct}%` }} />
+                          {/* overbought / sell zone */}
+                          <div className="absolute top-0 h-full bg-red-500/20" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
+                          {/* threshold lines */}
+                          <div className="absolute top-0 w-px h-full bg-green-500/70" style={{ left: `${lowPct}%` }} />
+                          <div className="absolute top-0 w-px h-full bg-red-500/70" style={{ left: `${highPct}%` }} />
+                          {/* value marker */}
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-slate-900 transition-all ${hot ? 'bg-amber-400' : 'bg-slate-300'}`}
+                            style={{ left: `${pct}%` }}
+                          />
+                        </div>
+                        <div className="flex justify-between text-xs text-slate-600">
+                          <span>{m.min}{m.unit}</span>
+                          <span className="text-green-600/70">{m.lowThreshold}{m.unit}</span>
+                          <span className="text-red-600/70">{m.highThreshold}{m.unit}</span>
+                          <span>{m.max}{m.unit}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                    ? 'Hit "Scan now" to load market data.'
+                    : 'Symbols are being identified — scan will begin automatically.'}
+                </p>
+              )}
+            </div>
           )}
         </section>
 
