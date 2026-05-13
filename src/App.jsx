@@ -194,12 +194,40 @@ function parseWatchSymbols(text) {
 }
 
 function parseAiPlanResponse(text) {
-  const normalized = text.replace(/\r/g, '')
-  const planMatch = normalized.match(/Plan\s*[:]\s*([\s\S]*?)(?=(Watch list|Watchlist|Notes|$))/i)
-  const watchMatch = normalized.match(/Watch\s*list\s*[:]\s*([\s\S]*?)(?=(Notes|$))/i)
+  // Strip markdown bold/italic and leading bullets so patterns match cleanly
+  const normalized = text
+    .replace(/\r/g, '')
+    .replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+    .replace(/^[\s*#-]+/gm, (m) => m.replace(/[*#-]/g, ''))
+
+  const planMatch = normalized.match(/Plan\s*[:]\s*([\s\S]*?)(?=(Watch\s*list|Watchlist|Tickers|Symbols|Notes|$))/i)
+  const watchMatch = normalized.match(/(?:Watch\s*list|Watchlist|Tickers|Symbols)\s*[:]\s*([\s\S]*?)(?=(Notes|$))/i)
   const notesMatch = normalized.match(/Notes\s*[:]\s*([\s\S]*)/i)
+
   const plan = planMatch ? planMatch[1].trim() : normalized.trim()
-  const watchList = watchMatch ? watchMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s*,\s*/g, ', ') : ''
+
+  let watchList = ''
+  if (watchMatch) {
+    // Collapse newlines, strip bullet chars, normalise commas
+    watchList = watchMatch[1]
+      .trim()
+      .replace(/[\r\n]+/g, ', ')
+      .replace(/^[\s\-•*]+/gm, '')
+      .replace(/\s*,\s*/g, ', ')
+      .trim()
+  }
+
+  // Fallback: scan the full response for uppercase ticker-like tokens (2–5 caps)
+  // if the structured section was empty or only had noise
+  const symbols = parseWatchSymbols(watchList)
+  if (symbols.length === 0) {
+    const tickers = [...new Set(
+      (normalized.match(/\b[A-Z]{2,5}\b/g) || [])
+        .filter((t) => !['AM', 'PM', 'ET', 'THE', 'FOR', 'AND', 'ORB', 'RSI', 'VWAP', 'MA', 'ATH', 'ATL', 'IPO', 'EPS', 'CEO', 'US', 'TV'].includes(t))
+    )].slice(0, 5)
+    if (tickers.length > 0) watchList = tickers.join(', ')
+  }
+
   const notes = notesMatch ? notesMatch[1].trim() : ''
   return { plan, watchList, notes }
 }
@@ -1249,9 +1277,7 @@ export default function App() {
                     placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
                     className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
                   />
-                  {planStatus && parseWatchSymbols(dailyPlan.watchList).length === 0 && (
-                    <p className="mt-2 text-xs text-amber-400">{planStatus}</p>
-                  )}
+                  {planStatus && <p className="mt-2 text-xs text-amber-400">{planStatus}</p>}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
