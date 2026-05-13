@@ -667,7 +667,10 @@ export default function App() {
     const fetchSummary = symbols.map((s) => {
       const r = fetchResults[s] || {}
       if (r.error) return `${s}:error`
-      return `${s}:${r.intraday ? 'intraday✓' : 'intraday✗'} ${r.quote ? 'quote✓' : 'quote✗'}`
+      const md = updatedMarketData[s]
+      const price = md?.quote?.price || 0
+      const bars = md?.intraday?.length || 0
+      return `${s}: $${price.toFixed(2)} ${bars}bars`
     }).join(' | ')
 
     const { signals, phase } = buildSignals(symbols, updatedMarketData)
@@ -679,39 +682,40 @@ export default function App() {
     const metrics = []
     for (const symbol of symbols) {
       const md = updatedMarketData[symbol]
-      if (!md) continue
-      let pushed = false
-      if (phase === 'pre-market' && md.quote && md.dailySeries?.length > 0) {
-        const raw = ((md.quote.price - md.dailySeries[0].close) / md.dailySeries[0].close) * 100
+      const price = md?.quote?.price || 0
+      const prevClose = md?.quote?.previousClose || 0
+      const intradayBars = md?.intraday?.length || 0
+
+      if (phase === 'pre-market' && price > 0 && md.dailySeries?.length > 0) {
+        const raw = ((price - md.dailySeries[0].close) / md.dailySeries[0].close) * 100
         metrics.push({ symbol, label: 'Gap', value: raw, min: -10, max: 10, lowThreshold: -3, highThreshold: 3, unit: '%' })
-        pushed = true
-      } else if (phase === 'opening-drive' && md.intraday?.length > 0 && md.quote) {
+      } else if (phase === 'opening-drive' && intradayBars > 0 && price > 0) {
         const orb = detectORB(md.intraday, 15)
         if (orb) {
-          const distPct = ((md.quote.price - orb.high) / orb.high) * 100
+          const distPct = ((price - orb.high) / orb.high) * 100
           metrics.push({ symbol, label: 'vs ORB High', value: distPct, min: -5, max: 5, lowThreshold: -0.5, highThreshold: 0, unit: '%' })
-          pushed = true
+        } else {
+          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0 })
         }
-      } else if (phase === 'midday-fade' && md.intraday?.length >= 15) {
+      } else if (phase === 'midday-fade' && intradayBars >= 15) {
         const closes = md.intraday.map((d) => d.close)
         const rsi = calculateRSI(closes, 14)
         if (rsi !== null) {
           metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '' })
-          pushed = true
+        } else {
+          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0 })
         }
-      } else if (phase === 'power-hour' && md.quote) {
-        const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
-        metrics.push({ symbol, label: 'Day gain', value: gain, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
-        pushed = true
-      }
-      // Fallback: day gain % if previousClose available, otherwise current price as a placeholder
-      if (!pushed) {
-        if (md.quote?.price > 0 && md.quote?.previousClose > 0) {
-          const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
-          metrics.push({ symbol, label: 'Day gain', value: gain, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
-        } else if (md.quote?.price > 0) {
-          metrics.push({ symbol, label: 'Price', value: md.quote.price, min: 0, max: md.quote.price * 2, lowThreshold: md.quote.price * 0.99, highThreshold: md.quote.price * 1.01, unit: '' })
-        }
+      } else if (phase === 'power-hour' && price > 0 && prevClose > 0) {
+        metrics.push({ symbol, label: 'Day gain', value: ((price - prevClose) / prevClose) * 100, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+      } else {
+        // Always show something — day gain if possible, otherwise a placeholder
+        metrics.push({
+          symbol,
+          label: price > 0 && prevClose > 0 ? 'Day gain' : 'Awaiting data',
+          value: price > 0 && prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0,
+          min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: price > 0 && prevClose > 0 ? '%' : '',
+          noData: !(price > 0 && prevClose > 0),
+        })
       }
     }
     setWatchMetrics(metrics)
@@ -1009,10 +1013,18 @@ export default function App() {
                 <div className="space-y-3">
                   {liveSignals.length === 0 && <p className={`text-xs ${t.faint} mb-3`}>Watching — no threshold crossed yet</p>}
                   {watchMetrics.map((m) => {
+                    if (m.noData) {
+                      return (
+                        <div key={m.symbol} className="flex items-center justify-between text-xs">
+                          <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
+                          <span className={t.faint}>Awaiting data…</span>
+                        </div>
+                      )
+                    }
                     const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
                     const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
                     const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
-                    const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
+                    const hot = !m.noData && (m.value <= m.lowThreshold || m.value >= m.highThreshold)
                     return (
                       <div key={m.symbol} className="space-y-1">
                         <div className="flex justify-between text-xs">
