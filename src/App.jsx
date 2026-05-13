@@ -696,22 +696,34 @@ export default function App() {
     for (const symbol of symbols) {
       const md = updatedMarketData[symbol]
       if (!md) continue
+      let pushed = false
       if (phase === 'pre-market' && md.quote && md.dailySeries?.length > 0) {
         const raw = ((md.quote.price - md.dailySeries[0].close) / md.dailySeries[0].close) * 100
         metrics.push({ symbol, label: 'Gap', value: raw, min: -10, max: 10, lowThreshold: -3, highThreshold: 3, unit: '%' })
+        pushed = true
       } else if (phase === 'opening-drive' && md.intraday?.length > 0 && md.quote) {
         const orb = detectORB(md.intraday, 15)
         if (orb) {
           const distPct = ((md.quote.price - orb.high) / orb.high) * 100
           metrics.push({ symbol, label: 'vs ORB High', value: distPct, min: -5, max: 5, lowThreshold: -0.5, highThreshold: 0, unit: '%' })
+          pushed = true
         }
-      } else if (phase === 'midday-fade' && md.intraday?.length > 0) {
+      } else if (phase === 'midday-fade' && md.intraday?.length >= 15) {
         const closes = md.intraday.map((d) => d.close)
         const rsi = calculateRSI(closes, 14)
-        if (rsi !== null) metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '' })
+        if (rsi !== null) {
+          metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '' })
+          pushed = true
+        }
       } else if (phase === 'power-hour' && md.quote) {
         const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
         metrics.push({ symbol, label: 'Day gain', value: gain, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+        pushed = true
+      }
+      // Fallback: always show day gain from quote if primary metric unavailable
+      if (!pushed && md.quote?.previousClose) {
+        const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
+        metrics.push({ symbol, label: 'Day gain', value: gain, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
       }
     }
     setWatchMetrics(metrics)
@@ -953,18 +965,18 @@ export default function App() {
     actExit:    dk ? 'bg-red-950/40 border border-red-800/40'       : 'bg-red-50 border border-red-200',
     actTrade:   dk ? 'bg-slate-800/40 border border-slate-700'      : 'bg-gray-100 border border-gray-200',
     // controls
-    btnScan:    dk ? 'bg-amber-600/20 border border-amber-600/40 text-amber-300 hover:bg-amber-600/30' : 'bg-amber-100 border border-amber-300 text-amber-700 hover:bg-amber-200',
-    btnDel:     dk ? 'bg-rose-500/20 text-rose-300 hover:bg-rose-500/40' : 'bg-rose-100 text-rose-700 hover:bg-rose-200',
+    btnScan:    dk ? 'bg-blue-700 border border-blue-600 text-white hover:bg-blue-600'       : 'bg-blue-600 border border-blue-700 text-white hover:bg-blue-700',
+    btnDel:     dk ? 'bg-slate-700 text-slate-300 hover:bg-red-900/60 hover:text-red-300'    : 'bg-gray-200 text-gray-600 hover:bg-red-100 hover:text-red-700',
     // plan decisions
-    decActive:    dk ? 'border-amber-600/50 bg-amber-950/20'        : 'border-amber-400 bg-amber-50',
+    decActive:    dk ? 'border-blue-600/60 bg-blue-900/30'          : 'border-blue-400 bg-blue-50',
     decCompleted: dk ? 'border-slate-700 bg-slate-800/40 opacity-50': 'border-gray-200 bg-gray-100 opacity-50',
     decPending:   dk ? 'border-slate-700/40 bg-transparent'         : 'border-gray-200 bg-transparent',
     // values
     statValue:  dk ? 'font-semibold text-white'      : 'font-semibold text-gray-900',
-    vwapValue:  dk ? 'font-semibold text-cyan-300'   : 'font-semibold text-cyan-700',
+    vwapValue:  dk ? 'font-semibold text-sky-300'    : 'font-semibold text-sky-700',
     plGain:     dk ? 'text-emerald-400' : 'text-emerald-600',
     plLoss:     dk ? 'text-rose-400'    : 'text-rose-600',
-    planStatus: dk ? 'text-amber-400'   : 'text-amber-600',
+    scanStatus: dk ? 'text-slate-400'   : 'text-gray-500',
   }
 
   return (
@@ -1022,7 +1034,7 @@ export default function App() {
                     )}
                   </div>
                   <div className={`shrink-0 w-2 h-2 rounded-full mt-1 ${
-                    decision.status === 'active' ? 'bg-amber-400 animate-pulse' :
+                    decision.status === 'active' ? 'bg-blue-500 animate-pulse' :
                     decision.status === 'completed' ? 'bg-emerald-500' : 'bg-gray-400'
                   }`} />
                 </div>
@@ -1031,45 +1043,143 @@ export default function App() {
           </div>
         </section>
 
-        {/* ── Activity Log ── */}
-        {(() => {
-          const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
-          if (todayLog.length === 0) return null
-          return (
-            <section className={`${t.card} p-5`}>
-              <div className="flex items-center justify-between gap-4">
-                <h2 className={`text-base font-semibold ${t.heading}`}>Activity log</h2>
-                <span className={`text-xs ${t.faint}`}>{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
-              </div>
-              <div className="mt-4 space-y-2 max-h-56 overflow-y-auto">
-                {todayLog.map((entry) => (
-                  <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
-                    entry.type === 'hard-exit'      ? t.actExit :
-                    entry.type === 'orb-breakout'   ? t.actOrb :
-                    entry.type === 'gapper'         ? t.actGapper :
-                    entry.type === 'mean-reversion' ? t.actMean :
-                    entry.type === 'power-hour'     ? t.actPower :
-                    t.actTrade
-                  }`}>
-                    <span className={`shrink-0 text-xs ${t.faint} font-mono pt-0.5`}>{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className={`text-sm ${t.heading}`}>{entry.message}</p>
-                      {entry.detail && <p className={`text-xs ${t.muted}`}>{entry.detail}</p>}
+        {/* ── Activity Log + Live Signals ── */}
+        <div className="grid gap-6 xl:grid-cols-2">
+          {/* Activity Log */}
+          {(() => {
+            const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
+            return (
+              <section className={`${t.card} p-5`}>
+                <div className="flex items-center justify-between gap-4">
+                  <h2 className={`text-base font-semibold ${t.heading}`}>Activity log</h2>
+                  <span className={`text-xs ${t.faint}`}>{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
+                </div>
+                <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                  {todayLog.length === 0 ? (
+                    <p className={`text-sm ${t.faint}`}>No activity yet — signals will appear here as they fire.</p>
+                  ) : todayLog.map((entry) => (
+                    <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
+                      entry.type === 'hard-exit'      ? t.actExit :
+                      entry.type === 'orb-breakout'   ? t.actOrb :
+                      entry.type === 'gapper'         ? t.actGapper :
+                      entry.type === 'mean-reversion' ? t.actMean :
+                      entry.type === 'power-hour'     ? t.actPower :
+                      t.actTrade
+                    }`}>
+                      <span className={`shrink-0 text-xs ${t.faint} font-mono pt-0.5`}>{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className={`text-sm ${t.heading}`}>{entry.message}</p>
+                        {entry.detail && <p className={`text-xs ${t.muted}`}>{entry.detail}</p>}
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        entry.type === 'hard-exit'      ? t.bRed :
+                        entry.type === 'orb-breakout'   ? t.bBlue :
+                        entry.type === 'gapper'         ? t.bGreen :
+                        entry.type === 'mean-reversion' ? t.bOrange :
+                        entry.type === 'power-hour'     ? t.bCyan :
+                        t.bGray
+                      }`}>{entry.type?.replace(/-/g, ' ')}</span>
                     </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      entry.type === 'hard-exit'      ? t.bRed :
-                      entry.type === 'orb-breakout'   ? t.bBlue :
-                      entry.type === 'gapper'         ? t.bGreen :
-                      entry.type === 'mean-reversion' ? t.bOrange :
-                      entry.type === 'power-hour'     ? t.bCyan :
-                      t.bGray
-                    }`}>{entry.type?.replace(/-/g, ' ')}</span>
+                  ))}
+                </div>
+              </section>
+            )
+          })()}
+
+          {/* Live Signals */}
+          <section className={`${t.card} p-5`}>
+            <div className="flex items-center justify-between gap-4">
+              <div>
+                <h2 className={`text-base font-semibold ${t.heading}`}>Live signals</h2>
+                {lastAutoScan && <p className={`text-xs ${t.faint} mt-0.5`}>Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
+              </div>
+              <button
+                type="button"
+                onClick={() => refreshAndScanRef.current?.()}
+                disabled={!dailyPlan || scanning}
+                className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 ${t.btnScan}`}
+              >
+                {scanning ? 'Scanning…' : 'Scan now'}
+              </button>
+            </div>
+            {liveSignals.length > 0 ? (
+              <div className="mt-4 space-y-2">
+                {liveSignals.map((signal) => (
+                  <div key={signal.id} className={`rounded-xl p-3 border ${
+                    signal.type === 'gapper'         ? t.sigGapper :
+                    signal.type === 'orb-breakout'   ? t.sigOrb :
+                    signal.type === 'mean-reversion' ? t.sigMean :
+                    signal.type === 'power-hour'     ? t.sigPower :
+                    t.sigExit
+                  }`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className={`text-sm font-semibold ${t.heading}`}>{signal.message}</p>
+                        <p className={`mt-0.5 text-xs ${t.muted}`}>{signal.action}</p>
+                      </div>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                        signal.type === 'gapper'         ? t.bGreen :
+                        signal.type === 'orb-breakout'   ? t.bBlue :
+                        signal.type === 'mean-reversion' ? t.bOrange :
+                        signal.type === 'power-hour'     ? t.bCyan :
+                        t.bRed
+                      }`}>{signal.type.replace(/-/g, ' ')}</span>
+                    </div>
                   </div>
                 ))}
               </div>
-            </section>
-          )
-        })()}
+            ) : (
+              <div className="mt-4">
+                {watchMetrics.length > 0 ? (
+                  <div className="space-y-4">
+                    <p className={`text-xs ${t.faint}`}>Watching — no threshold crossed yet</p>
+                    {watchMetrics.map((m) => {
+                      const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
+                      const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
+                      const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
+                      const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
+                      return (
+                        <div key={m.symbol} className="space-y-1">
+                          <div className="flex justify-between text-xs">
+                            <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
+                            <span className={hot ? `font-bold ${dk ? 'text-blue-400' : 'text-blue-600'}` : t.muted}>
+                              {m.label}: {m.value.toFixed(1)}{m.unit}{hot ? ' ↑' : ''}
+                            </span>
+                          </div>
+                          <div className="relative h-2.5 rounded-full overflow-visible" style={{ background: dk ? '#1e293b' : '#e5e7eb' }}>
+                            <div className="absolute left-0 top-0 h-full rounded-l-full bg-emerald-500/25" style={{ width: `${lowPct}%` }} />
+                            <div className="absolute top-0 h-full rounded-r-full bg-red-500/25" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
+                            <div className="absolute top-0 w-0.5 h-full bg-emerald-500/60" style={{ left: `${lowPct}%` }} />
+                            <div className="absolute top-0 w-0.5 h-full bg-red-500/60" style={{ left: `${highPct}%` }} />
+                            <div
+                              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-sm transition-all ${hot ? 'bg-blue-500' : dk ? 'bg-slate-400' : 'bg-gray-400'}`}
+                              style={{ left: `${pct}%` }}
+                            />
+                          </div>
+                          <div className={`flex justify-between text-xs ${t.faint}`}>
+                            <span>{m.min}{m.unit}</span>
+                            <span className="text-emerald-600">{m.lowThreshold}{m.unit}</span>
+                            <span className="text-red-500">{m.highThreshold}{m.unit}</span>
+                            <span>{m.max}{m.unit}</span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <p className={`text-sm ${t.faint}`}>
+                    {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                      ? 'Hit "Scan now" to load market data.'
+                      : 'Symbols are being identified — scan will begin automatically.'}
+                  </p>
+                )}
+              </div>
+            )}
+            {scanStatus && (
+              <p className={`mt-3 text-xs font-mono ${t.scanStatus} border-t ${t.divider} pt-3`}>{scanStatus}</p>
+            )}
+          </section>
+        </div>
 
         {/* ── Trade Table ── */}
         <section className={`${t.card} p-5`}>
@@ -1127,105 +1237,6 @@ export default function App() {
               </tbody>
             </table>
           </div>
-        </section>
-
-        {/* ── Live Signals ── */}
-        <section className={`${t.card} p-5`}>
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className={`text-base font-semibold ${t.heading}`}>Live signals</h2>
-              {lastAutoScan && <p className={`text-xs ${t.faint} mt-0.5`}>Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
-            </div>
-            <button
-              type="button"
-              onClick={() => refreshAndScanRef.current?.()}
-              disabled={!dailyPlan || scanning}
-              className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 ${t.btnScan}`}
-            >
-              {scanning ? 'Scanning…' : 'Scan now'}
-            </button>
-          </div>
-          {liveSignals.length > 0 ? (
-            <div className="mt-4 space-y-2">
-              {liveSignals.map((signal) => (
-                <div key={signal.id} className={`rounded-xl p-3 border ${
-                  signal.type === 'gapper'         ? t.sigGapper :
-                  signal.type === 'orb-breakout'   ? t.sigOrb :
-                  signal.type === 'mean-reversion' ? t.sigMean :
-                  signal.type === 'power-hour'     ? t.sigPower :
-                  t.sigExit
-                }`}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className={`text-sm font-semibold ${t.heading}`}>{signal.message}</p>
-                      <p className={`mt-0.5 text-xs ${t.muted}`}>{signal.action}</p>
-                    </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      signal.type === 'gapper'         ? t.bGreen :
-                      signal.type === 'orb-breakout'   ? t.bBlue :
-                      signal.type === 'mean-reversion' ? t.bOrange :
-                      signal.type === 'power-hour'     ? t.bCyan :
-                      t.bRed
-                    }`}>{signal.type.replace(/-/g, ' ')}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4">
-              {watchMetrics.length > 0 ? (
-                <div className="space-y-4">
-                  <p className="text-xs text-gray-400">Watching — no signal threshold crossed yet</p>
-                  {watchMetrics.map((m) => {
-                    const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
-                    const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
-                    const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
-                    const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
-                    return (
-                      <div key={m.symbol} className="space-y-1">
-                        <div className="flex justify-between text-xs">
-                          <span className="font-semibold text-gray-900">{m.symbol}</span>
-                          <span className={hot ? 'text-amber-600 font-bold' : 'text-gray-500'}>
-                            {m.label}: {m.value.toFixed(1)}{m.unit}
-                            {hot ? ' ⚡' : ''}
-                          </span>
-                        </div>
-                        <div className="relative h-3 rounded-full bg-gray-200 overflow-visible">
-                          {/* oversold / buy zone */}
-                          <div className="absolute left-0 top-0 h-full rounded-l-full bg-green-400/30" style={{ width: `${lowPct}%` }} />
-                          {/* overbought / sell zone */}
-                          <div className="absolute top-0 h-full rounded-r-full bg-red-400/30" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
-                          {/* threshold lines */}
-                          <div className="absolute top-0 w-0.5 h-full bg-green-500" style={{ left: `${lowPct}%` }} />
-                          <div className="absolute top-0 w-0.5 h-full bg-red-500" style={{ left: `${highPct}%` }} />
-                          {/* value marker — sits on top, outside overflow:hidden */}
-                          <div
-                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow transition-all ${hot ? 'bg-amber-500' : 'bg-gray-500'}`}
-                            style={{ left: `${pct}%` }}
-                          />
-                        </div>
-                        <div className="flex justify-between text-xs text-gray-400">
-                          <span>{m.min}{m.unit}</span>
-                          <span className="text-green-600/70">{m.lowThreshold}{m.unit}</span>
-                          <span className="text-red-600/70">{m.highThreshold}{m.unit}</span>
-                          <span>{m.max}{m.unit}</span>
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              ) : (
-                <p className={`text-sm ${t.faint}`}>
-                  {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
-                    ? 'Hit "Scan now" to load market data.'
-                    : 'Symbols are being identified — scan will begin automatically.'}
-                </p>
-              )}
-            </div>
-          )}
-          {scanStatus && (
-            <p className={`mt-3 text-xs font-mono ${t.faint} border-t ${t.divider} pt-3`}>{scanStatus}</p>
-          )}
         </section>
 
         {/* ══ SETUP — below the fold ══ */}
@@ -1417,7 +1428,7 @@ export default function App() {
                     Copy prompt
                   </button>
                 </div>
-                {planStatus && <p className={`mt-3 text-sm ${t.planStatus}`}>{planStatus}</p>}
+                {planStatus && <p className={`mt-3 text-sm ${t.scanStatus}`}>{planStatus}</p>}
               </form>
             ) : (
               <div className={`mt-6 space-y-5 rounded-3xl border ${t.divider} ${dk ? 'bg-slate-950/80' : 'bg-gray-50'} p-5`}>
@@ -1442,7 +1453,7 @@ export default function App() {
                     placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
                     className={`mt-2 w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`}
                   />
-                  {planStatus && <p className={`mt-2 text-xs ${t.planStatus}`}>{planStatus}</p>}
+                  {planStatus && <p className={`mt-2 text-xs ${t.scanStatus}`}>{planStatus}</p>}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:opacity-50">
@@ -1456,7 +1467,7 @@ export default function App() {
                   </button>
                 </div>
                 {planInterpretation && <p className={`mt-3 text-sm ${t.muted}`}>{planInterpretation}</p>}
-                {planStatus && <p className={`mt-3 text-sm ${t.planStatus}`}>{planStatus}</p>}
+                {planStatus && <p className={`mt-3 text-sm ${t.scanStatus}`}>{planStatus}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className={`rounded-3xl ${dk ? 'bg-slate-800' : 'bg-white'} p-4`}>
                     <p className={`text-sm ${t.muted}`}>Risk profile</p>
