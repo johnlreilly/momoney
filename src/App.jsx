@@ -900,59 +900,59 @@ export default function App() {
   const todaysMetrics = computeMetrics(selectedDate)
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 px-4 py-6">
+    <div className="min-h-screen bg-gray-100 text-gray-900 px-4 py-6">
       <div className="mx-auto max-w-7xl space-y-6">
         {/* ── Header: glanceable KPI ── */}
-        <header className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl shadow-black/30">
+        <header className="rounded-3xl border border-gray-200 bg-white p-5 shadow-xl shadow-gray-300/60">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-baseline gap-3">
               <h1 className="text-xl font-semibold text-white">momoney</h1>
-              <span className="text-xs text-slate-500">v{VERSION}</span>
+              <span className="text-xs text-gray-400">v{VERSION}</span>
             </div>
             <div className="flex flex-wrap items-center gap-3">
               <div className={`rounded-2xl px-4 py-2 text-lg font-bold ${todaysMetrics.totalPL >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
                 {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
               </div>
-              <div className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-slate-300">
+              <div className="rounded-2xl bg-gray-200 px-4 py-2 text-sm text-gray-600">
                 {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
               </div>
-              <div className="rounded-2xl bg-slate-800 px-4 py-2 text-sm capitalize text-slate-300">
+              <div className="rounded-2xl bg-gray-200 px-4 py-2 text-sm capitalize text-gray-600">
                 {tradingPhase.replace(/-/g, ' ')}
               </div>
               {lastAutoScan && (
-                <div className="rounded-2xl bg-slate-800 px-4 py-2 text-xs text-slate-400">
+                <div className="rounded-2xl bg-gray-200 px-4 py-2 text-xs text-gray-500">
                   scanned {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               )}
-              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-2xl bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200 outline-none" />
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-2xl bg-gray-200 border border-gray-300 px-3 py-2 text-sm text-gray-700 outline-none" />
             </div>
           </div>
         </header>
 
         {/* ── Pending Decisions ── */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+        <section className="rounded-3xl border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between gap-4">
             <h2 className="text-base font-semibold text-white">Pending decisions</h2>
-            <span className="shrink-0 text-xs text-slate-500">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
+            <span className="shrink-0 text-xs text-gray-400">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-5">
             {pendingDecisions.map((decision) => (
               <div key={decision.phase} className={`rounded-2xl border p-3 ${
-                decision.status === 'active'    ? 'border-amber-600/50 bg-amber-950/20' :
-                decision.status === 'completed' ? 'border-slate-700/30 bg-slate-900/20 opacity-50' :
-                                                  'border-slate-700/40 bg-slate-900/40'
+                decision.status === 'active'    ? 'border-amber-600/50 bg-amber-50' :
+                decision.status === 'completed' ? 'border-gray-300/30 bg-gray-100/40 opacity-50' :
+                                                  'border-gray-300/40 bg-gray-100/60'
               }`}>
                 <div className="flex items-start justify-between gap-1">
                   <div className="min-w-0">
-                    <p className="text-xs text-slate-500 font-mono leading-tight">{decision.window}</p>
-                    <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' ? 'text-white' : 'text-slate-300'}`}>{decision.label}</p>
+                    <p className="text-xs text-gray-400 font-mono leading-tight">{decision.window}</p>
+                    <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' ? 'text-white' : 'text-gray-600'}`}>{decision.label}</p>
                     {decision.events.length > 0 && (
                       <p className="mt-1 text-xs text-emerald-400">{decision.events.length} trade{decision.events.length !== 1 ? 's' : ''}</p>
                     )}
                   </div>
                   <div className={`shrink-0 w-2 h-2 rounded-full mt-1 ${
                     decision.status === 'active' ? 'bg-amber-400 animate-pulse' :
-                    decision.status === 'completed' ? 'bg-emerald-500' : 'bg-slate-600'
+                    decision.status === 'completed' ? 'bg-emerald-500' : 'bg-gray-400'
                   }`} />
                 </div>
               </div>
@@ -965,25 +965,25 @@ export default function App() {
           const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
           if (todayLog.length === 0) return null
           return (
-            <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+            <section className="rounded-3xl border border-gray-200 bg-white p-5">
               <div className="flex items-center justify-between gap-4">
                 <h2 className="text-base font-semibold text-white">Activity log</h2>
-                <span className="text-xs text-slate-500">{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
+                <span className="text-xs text-gray-400">{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
               </div>
               <div className="mt-4 space-y-2 max-h-56 overflow-y-auto">
                 {todayLog.map((entry) => (
                   <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
-                    entry.type === 'hard-exit'      ? 'bg-red-950/40 border border-red-800/40' :
-                    entry.type === 'orb-breakout'   ? 'bg-blue-950/30 border border-blue-800/30' :
-                    entry.type === 'gapper'         ? 'bg-green-950/30 border border-green-800/30' :
-                    entry.type === 'mean-reversion' ? 'bg-orange-950/30 border border-orange-800/30' :
-                    entry.type === 'power-hour'     ? 'bg-cyan-950/30 border border-cyan-800/30' :
-                    'bg-slate-800/40 border border-slate-700/40'
+                    entry.type === 'hard-exit'      ? 'bg-red-50 border border-red-200' :
+                    entry.type === 'orb-breakout'   ? 'bg-blue-50 border border-blue-200' :
+                    entry.type === 'gapper'         ? 'bg-green-50 border border-green-200' :
+                    entry.type === 'mean-reversion' ? 'bg-orange-50 border border-orange-200' :
+                    entry.type === 'power-hour'     ? 'bg-cyan-50 border border-cyan-200' :
+                    'bg-gray-200/60 border border-gray-300/40'
                   }`}>
-                    <span className="shrink-0 text-xs text-slate-500 font-mono pt-0.5">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="shrink-0 text-xs text-gray-400 font-mono pt-0.5">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm text-white">{entry.message}</p>
-                      {entry.detail && <p className="text-xs text-slate-400">{entry.detail}</p>}
+                      {entry.detail && <p className="text-xs text-gray-500">{entry.detail}</p>}
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                       entry.type === 'hard-exit'      ? 'bg-red-500/20 text-red-300' :
@@ -991,7 +991,7 @@ export default function App() {
                       entry.type === 'gapper'         ? 'bg-green-500/20 text-green-300' :
                       entry.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
                       entry.type === 'power-hour'     ? 'bg-cyan-500/20 text-cyan-300' :
-                      'bg-slate-500/20 text-slate-300'
+                      'bg-gray-300/40 text-gray-600'
                     }`}>{entry.type?.replace(/-/g, ' ')}</span>
                   </div>
                 ))}
@@ -1001,17 +1001,17 @@ export default function App() {
         })()}
 
         {/* ── Trade Table ── */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+        <section className="rounded-3xl border border-gray-200 bg-white p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold text-white">Trades — {displayDate(selectedDate)}</h2>
             <div className="flex gap-2">
-              <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-emerald-500">Export day</button>
-              <button type="button" onClick={exportAllCsv} className="rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-500">Export all</button>
+              <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-gray-900 transition hover:bg-emerald-500">Export day</button>
+              <button type="button" onClick={exportAllCsv} className="rounded-xl bg-gray-400 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-gray-400">Export all</button>
             </div>
           </div>
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-gray-200 bg-white/90">
             <table className="min-w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-900 text-slate-400">
+              <thead className="bg-white text-gray-500">
                 <tr>
                   <th className="px-4 py-2.5">Symbol</th>
                   <th className="px-4 py-2.5">Action</th>
@@ -1026,26 +1026,26 @@ export default function App() {
               </thead>
               <tbody>
                 {dailyTrades.length === 0 ? (
-                  <tr><td colSpan="9" className="px-4 py-8 text-center text-slate-500">No trades yet — auto-trades will appear here as signals fire.</td></tr>
+                  <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-400">No trades yet — auto-trades will appear here as signals fire.</td></tr>
                 ) : (
                   dailyTrades.map((trade) => {
                     const pl = computeTradePL(trade)
                     const isAuto = trade.notes?.startsWith('Auto')
                     return (
-                      <tr key={trade.id} className={`border-t border-slate-800 ${isAuto ? 'bg-slate-900/40' : ''}`}>
-                        <td className="px-4 py-2.5 text-slate-100">
+                      <tr key={trade.id} className={`border-t border-gray-200 ${isAuto ? 'bg-gray-100/60' : ''}`}>
+                        <td className="px-4 py-2.5 text-gray-900">
                           <div className="flex items-center gap-2">
                             {trade.symbol}
                             {isAuto && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">auto</span>}
                           </div>
                         </td>
-                        <td className="px-4 py-2.5 text-slate-100">{trade.action}</td>
-                        <td className="px-4 py-2.5 text-slate-100">{trade.quantity}</td>
-                        <td className="px-4 py-2.5 text-slate-100">${trade.entryPrice.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-slate-100">${trade.exitPrice.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-gray-900">{trade.action}</td>
+                        <td className="px-4 py-2.5 text-gray-900">{trade.quantity}</td>
+                        <td className="px-4 py-2.5 text-gray-900">${trade.entryPrice.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-gray-900">${trade.exitPrice.toFixed(2)}</td>
                         <td className={`px-4 py-2.5 font-semibold ${pl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${pl.toFixed(2)}</td>
-                        <td className="px-4 py-2.5 text-slate-400 text-xs">{trade.riskRating}</td>
-                        <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[16rem] truncate">{trade.notes || '—'}</td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs">{trade.riskRating}</td>
+                        <td className="px-4 py-2.5 text-gray-500 text-xs max-w-[16rem] truncate">{trade.notes || '—'}</td>
                         <td className="px-4 py-2.5">
                           <button onClick={() => deleteTrade(trade.id)} className="rounded-xl bg-rose-500/20 px-2 py-1 text-xs text-rose-300 transition hover:bg-rose-500/40">Del</button>
                         </td>
@@ -1059,11 +1059,11 @@ export default function App() {
         </section>
 
         {/* ── Live Signals ── */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+        <section className="rounded-3xl border border-gray-200 bg-white p-5">
           <div className="flex items-center justify-between gap-4">
             <div>
               <h2 className="text-base font-semibold text-white">Live signals</h2>
-              {lastAutoScan && <p className="text-xs text-slate-500 mt-0.5">Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
+              {lastAutoScan && <p className="text-xs text-gray-400 mt-0.5">Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
             </div>
             <button
               type="button"
@@ -1078,16 +1078,16 @@ export default function App() {
             <div className="mt-4 space-y-2">
               {liveSignals.map((signal) => (
                 <div key={signal.id} className={`rounded-xl p-3 border ${
-                  signal.type === 'gapper'         ? 'border-green-800/50 bg-green-950/30' :
-                  signal.type === 'orb-breakout'   ? 'border-blue-800/50 bg-blue-950/30' :
-                  signal.type === 'mean-reversion' ? 'border-orange-800/50 bg-orange-950/30' :
-                  signal.type === 'power-hour'     ? 'border-cyan-800/50 bg-cyan-950/30' :
-                  'border-red-800/50 bg-red-950/30'
+                  signal.type === 'gapper'         ? 'border-green-300 bg-green-50' :
+                  signal.type === 'orb-breakout'   ? 'border-blue-300 bg-blue-50' :
+                  signal.type === 'mean-reversion' ? 'border-orange-300 bg-orange-50' :
+                  signal.type === 'power-hour'     ? 'border-cyan-300 bg-cyan-50' :
+                  'border-red-300 bg-red-950/30'
                 }`}>
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-white">{signal.message}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">{signal.action}</p>
+                      <p className="mt-0.5 text-xs text-gray-500">{signal.action}</p>
                     </div>
                     <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
                       signal.type === 'gapper'         ? 'bg-green-500/20 text-green-300' :
@@ -1104,7 +1104,7 @@ export default function App() {
             <div className="mt-4">
               {watchMetrics.length > 0 ? (
                 <div className="space-y-4">
-                  <p className="text-xs text-slate-500">Watching — no signal threshold crossed yet</p>
+                  <p className="text-xs text-gray-400">Watching — no signal threshold crossed yet</p>
                   {watchMetrics.map((m) => {
                     const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
                     const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
@@ -1113,27 +1113,27 @@ export default function App() {
                     return (
                       <div key={m.symbol} className="space-y-1">
                         <div className="flex justify-between text-xs">
-                          <span className="font-semibold text-white">{m.symbol}</span>
-                          <span className={hot ? 'text-amber-300 font-bold' : 'text-slate-400'}>
+                          <span className="font-semibold text-gray-900">{m.symbol}</span>
+                          <span className={hot ? 'text-amber-600 font-bold' : 'text-gray-500'}>
                             {m.label}: {m.value.toFixed(1)}{m.unit}
                             {hot ? ' ⚡' : ''}
                           </span>
                         </div>
-                        <div className="relative h-3 rounded-full bg-slate-800 overflow-hidden">
+                        <div className="relative h-3 rounded-full bg-gray-200 overflow-visible">
                           {/* oversold / buy zone */}
-                          <div className="absolute left-0 top-0 h-full bg-green-500/20" style={{ width: `${lowPct}%` }} />
+                          <div className="absolute left-0 top-0 h-full rounded-l-full bg-green-400/30" style={{ width: `${lowPct}%` }} />
                           {/* overbought / sell zone */}
-                          <div className="absolute top-0 h-full bg-red-500/20" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
+                          <div className="absolute top-0 h-full rounded-r-full bg-red-400/30" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
                           {/* threshold lines */}
-                          <div className="absolute top-0 w-px h-full bg-green-500/70" style={{ left: `${lowPct}%` }} />
-                          <div className="absolute top-0 w-px h-full bg-red-500/70" style={{ left: `${highPct}%` }} />
-                          {/* value marker */}
+                          <div className="absolute top-0 w-0.5 h-full bg-green-500" style={{ left: `${lowPct}%` }} />
+                          <div className="absolute top-0 w-0.5 h-full bg-red-500" style={{ left: `${highPct}%` }} />
+                          {/* value marker — sits on top, outside overflow:hidden */}
                           <div
-                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-2.5 h-2.5 rounded-full border-2 border-slate-900 transition-all ${hot ? 'bg-amber-400' : 'bg-slate-300'}`}
+                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow transition-all ${hot ? 'bg-amber-500' : 'bg-gray-500'}`}
                             style={{ left: `${pct}%` }}
                           />
                         </div>
-                        <div className="flex justify-between text-xs text-slate-600">
+                        <div className="flex justify-between text-xs text-gray-400">
                           <span>{m.min}{m.unit}</span>
                           <span className="text-green-600/70">{m.lowThreshold}{m.unit}</span>
                           <span className="text-red-600/70">{m.highThreshold}{m.unit}</span>
@@ -1144,7 +1144,7 @@ export default function App() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-gray-400">
                   {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
                     ? 'Hit "Scan now" to load market data.'
                     : 'Symbols are being identified — scan will begin automatically.'}
@@ -1155,46 +1155,46 @@ export default function App() {
         </section>
 
         {/* ══ SETUP — below the fold ══ */}
-        <div className="border-t border-slate-800 pt-2">
-          <p className="text-xs uppercase tracking-widest text-slate-600 text-center pb-4">Setup &amp; tools</p>
+        <div className="border-t border-gray-200 pt-2">
+          <p className="text-xs uppercase tracking-widest text-gray-400 text-center pb-4">Setup &amp; tools</p>
         </div>
 
 
         {/* ── Market Tools + Manual Trade Entry ── */}
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 space-y-4">
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 space-y-4">
             <h2 className="text-base font-semibold text-white">Market data</h2>
             <div className="grid gap-4 sm:grid-cols-2">
-              <label className="block text-sm font-medium text-slate-200">
+              <label className="block text-sm font-medium text-gray-700">
                 AI provider
-                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
+                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className="mt-2 w-full rounded-2xl bg-gray-50 border border-gray-300 p-3 text-gray-700 outline-none">
                   <option value="gemini">Gemini</option>
                   <option value="openai">OpenAI</option>
                 </select>
               </label>
-              <label className="block text-sm font-medium text-slate-200">
+              <label className="block text-sm font-medium text-gray-700">
                 Symbol
-                <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
+                <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className="mt-2 w-full rounded-2xl bg-gray-50 border border-gray-300 p-3 text-gray-700 outline-none" />
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:bg-slate-700">Fetch quote</button>
-              <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:bg-slate-700">Daily history</button>
-              <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="rounded-2xl bg-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:bg-slate-700">Intraday</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:bg-gray-300">Fetch quote</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:bg-gray-300">Daily history</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="rounded-2xl bg-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:bg-gray-300">Intraday</button>
             </div>
-            {marketStatus && <p className="text-xs text-slate-400">{marketStatus}</p>}
+            {marketStatus && <p className="text-xs text-gray-500">{marketStatus}</p>}
             {currentQuote && (
-              <div className="rounded-2xl bg-slate-950/80 p-4 space-y-3">
+              <div className="rounded-2xl bg-white/90 p-4 space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="font-semibold text-white">{currentQuote.symbol} <span className="text-slate-400 text-sm font-normal">${currentQuote.price.toFixed(2)}</span></p>
-                  <span className="text-xs text-slate-400">{currentQuote.changePercent}</span>
+                  <p className="font-semibold text-white">{currentQuote.symbol} <span className="text-gray-500 text-sm font-normal">${currentQuote.price.toFixed(2)}</span></p>
+                  <span className="text-xs text-gray-500">{currentQuote.changePercent}</span>
                 </div>
                 {currentIntraday.length > 0 && (
                   <div className="grid grid-cols-4 gap-2 text-xs">
-                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">High</p><p className="font-semibold text-white">${Math.max(...currentIntraday.map((p) => p.high)).toFixed(2)}</p></div>
-                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">Low</p><p className="font-semibold text-white">${Math.min(...currentIntraday.map((p) => p.low)).toFixed(2)}</p></div>
-                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">VWAP</p><p className="font-semibold text-cyan-300">${(calculateVWAP(currentIntraday) ?? 0).toFixed(2)}</p></div>
-                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">Vol</p><p className="font-semibold text-white">{currentIntraday[0].volume.toLocaleString()}</p></div>
+                    <div className="rounded-xl bg-gray-50 p-2"><p className="text-gray-400">High</p><p className="font-semibold text-white">${Math.max(...currentIntraday.map((p) => p.high)).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-gray-50 p-2"><p className="text-gray-400">Low</p><p className="font-semibold text-white">${Math.min(...currentIntraday.map((p) => p.low)).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-gray-50 p-2"><p className="text-gray-400">VWAP</p><p className="font-semibold text-cyan-300">${(calculateVWAP(currentIntraday) ?? 0).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-gray-50 p-2"><p className="text-gray-400">Vol</p><p className="font-semibold text-white">{currentIntraday[0].volume.toLocaleString()}</p></div>
                   </div>
                 )}
                 <button type="button" onClick={fillTradePrices} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Use for trade prices</button>
@@ -1202,19 +1202,19 @@ export default function App() {
             )}
           </div>
 
-          <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <div className="rounded-3xl border border-gray-200 bg-white p-6">
             <h2 className="text-base font-semibold text-white mb-4">Add trade manually</h2>
             <form onSubmit={submitTrade} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-300">Symbol<input value={tradeDraft.symbol} onChange={(e) => setTradeDraft((p) => ({ ...p, symbol: e.target.value }))} placeholder="AAPL" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
-                <label className="block text-sm font-medium text-slate-300">Action<select value={tradeDraft.action} onChange={(e) => setTradeDraft((p) => ({ ...p, action: e.target.value }))} className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm"><option>Buy</option><option>Sell</option></select></label>
+                <label className="block text-sm font-medium text-gray-600">Symbol<input value={tradeDraft.symbol} onChange={(e) => setTradeDraft((p) => ({ ...p, symbol: e.target.value }))} placeholder="AAPL" className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-gray-600">Action<select value={tradeDraft.action} onChange={(e) => setTradeDraft((p) => ({ ...p, action: e.target.value }))} className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm"><option>Buy</option><option>Sell</option></select></label>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
-                <label className="block text-sm font-medium text-slate-300">Qty<input type="number" value={tradeDraft.quantity} onChange={(e) => setTradeDraft((p) => ({ ...p, quantity: e.target.value }))} placeholder="100" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
-                <label className="block text-sm font-medium text-slate-300">Entry<input type="number" step="0.01" value={tradeDraft.entryPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, entryPrice: e.target.value }))} placeholder="150.00" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
-                <label className="block text-sm font-medium text-slate-300">Exit<input type="number" step="0.01" value={tradeDraft.exitPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, exitPrice: e.target.value }))} placeholder="152.00" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-gray-600">Qty<input type="number" value={tradeDraft.quantity} onChange={(e) => setTradeDraft((p) => ({ ...p, quantity: e.target.value }))} placeholder="100" className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-gray-600">Entry<input type="number" step="0.01" value={tradeDraft.entryPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, entryPrice: e.target.value }))} placeholder="150.00" className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-gray-600">Exit<input type="number" step="0.01" value={tradeDraft.exitPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, exitPrice: e.target.value }))} placeholder="152.00" className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm" /></label>
               </div>
-              <label className="block text-sm font-medium text-slate-300">Notes<input value={tradeDraft.notes} onChange={(e) => setTradeDraft((p) => ({ ...p, notes: e.target.value }))} placeholder="Reason, signal, exit conditions" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+              <label className="block text-sm font-medium text-gray-600">Notes<input value={tradeDraft.notes} onChange={(e) => setTradeDraft((p) => ({ ...p, notes: e.target.value }))} placeholder="Reason, signal, exit conditions" className="mt-1 w-full rounded-xl bg-gray-50 border border-gray-300 p-2.5 text-gray-700 outline-none text-sm" /></label>
               <button type="submit" className="w-full rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500">Add trade</button>
             </form>
           </div>
@@ -1222,40 +1222,40 @@ export default function App() {
 
         {/* ── Performance History ── */}
         <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <article className="rounded-3xl border border-gray-200 bg-white p-6">
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-semibold text-white">Performance history</h2>
-                <p className="mt-2 text-slate-400">Review recent daily outcomes and compare the plan to actual P/L.</p>
+                <p className="mt-2 text-gray-500">Review recent daily outcomes and compare the plan to actual P/L.</p>
               </div>
             </div>
 
             <div className="mt-6 space-y-4">
               {history.length === 0 ? (
-                <p className="text-slate-400">No historical days recorded yet.</p>
+                <p className="text-gray-500">No historical days recorded yet.</p>
               ) : (
                 history.map((date) => {
                   const metrics = computeMetrics(date)
                   return (
-                    <div key={date} className="rounded-3xl bg-slate-950/80 p-4">
+                    <div key={date} className="rounded-3xl bg-white/90 p-4">
                       <div className="flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm text-slate-400">{displayDate(date)}</p>
+                          <p className="text-sm text-gray-500">{displayDate(date)}</p>
                           <p className="mt-1 text-lg font-semibold text-white">Net P/L: ${metrics.totalPL.toFixed(2)}</p>
                         </div>
-                        <div className="rounded-3xl bg-slate-900/80 px-3 py-2 text-sm text-slate-300">Trades: {metrics.trades}</div>
+                        <div className="rounded-3xl bg-gray-50 px-3 py-2 text-sm text-gray-600">Trades: {metrics.trades}</div>
                       </div>
                       <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                        <div className="rounded-3xl bg-slate-900/80 p-3">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Risk reward</p>
+                        <div className="rounded-3xl bg-gray-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-gray-400">Risk reward</p>
                           <p className="mt-2 text-lg font-semibold text-white">{metrics.riskReward}</p>
                         </div>
-                        <div className="rounded-3xl bg-slate-900/80 p-3">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Total risk</p>
+                        <div className="rounded-3xl bg-gray-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-gray-400">Total risk</p>
                           <p className="mt-2 text-lg font-semibold text-white">{metrics.risk.toFixed(2)}</p>
                         </div>
-                        <div className="rounded-3xl bg-slate-900/80 p-3">
-                          <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Reward</p>
+                        <div className="rounded-3xl bg-gray-50 p-3">
+                          <p className="text-xs uppercase tracking-[0.18em] text-gray-400">Reward</p>
                           <p className="mt-2 text-lg font-semibold text-white">{metrics.reward.toFixed(2)}</p>
                         </div>
                       </div>
@@ -1266,12 +1266,12 @@ export default function App() {
             </div>
           </article>
 
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <article className="rounded-3xl border border-gray-200 bg-white p-6">
             <h2 className="text-xl font-semibold text-white">P/L graph</h2>
-            <p className="mt-2 text-slate-400">Daily profit and loss trend for your latest recorded days.</p>
+            <p className="mt-2 text-gray-500">Daily profit and loss trend for your latest recorded days.</p>
             <div className="mt-6 space-y-3">
               {history.length === 0 ? (
-                <p className="text-slate-400">Add a plan and trades to begin tracking daily performance.</p>
+                <p className="text-gray-500">Add a plan and trades to begin tracking daily performance.</p>
               ) : (
                 <div className="space-y-3">
                   {(() => {
@@ -1282,11 +1282,11 @@ export default function App() {
                     const barWidth = Math.max(4, (Math.abs(metrics.totalPL) / maxPL) * 100)
                     return (
                       <div key={date} className="space-y-2">
-                        <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
+                        <div className="flex items-center justify-between gap-3 text-sm text-gray-600">
                           <span>{displayDate(date)}</span>
                           <span className={`${metrics.totalPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${metrics.totalPL.toFixed(2)}</span>
                         </div>
-                        <div className="h-3 rounded-full bg-slate-800">
+                        <div className="h-3 rounded-full bg-gray-200">
                           <div className={`h-3 rounded-full ${metrics.totalPL >= 0 ? 'bg-emerald-400' : 'bg-rose-400'}`} style={{ width: `${barWidth}%` }} />
                         </div>
                       </div>
@@ -1301,60 +1301,60 @@ export default function App() {
 
         {/* ── Morning Plan ── */}
         <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <article className="rounded-3xl border border-gray-200 bg-white p-6">
             <h2 className="text-xl font-semibold text-white">Morning plan</h2>
-            <p className="mt-2 text-slate-400">Answer the research prompt and describe the decision parameters you will monitor today.</p>
+            <p className="mt-2 text-gray-500">Answer the research prompt and describe the decision parameters you will monitor today.</p>
             {!dailyPlan ? (
               <form onSubmit={submitPlan} className="mt-6 space-y-5">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Research prompt</label>
-                  <textarea readOnly value={DEFAULT_PROMPT} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" />
+                  <label className="text-sm font-medium text-gray-700">Research prompt</label>
+                  <textarea readOnly value={DEFAULT_PROMPT} rows={3} className="w-full rounded-2xl bg-white/90 border border-gray-300 p-3 text-sm text-gray-700 outline-none" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Your plan</label>
-                  <textarea value={planDraft.response} onChange={(event) => setPlanDraft((prev) => ({ ...prev, response: event.target.value }))} rows={4} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="What are you doing today?" />
+                  <label className="text-sm font-medium text-gray-700">Your plan</label>
+                  <textarea value={planDraft.response} onChange={(event) => setPlanDraft((prev) => ({ ...prev, response: event.target.value }))} rows={4} className="w-full rounded-2xl bg-white/90 border border-gray-300 p-3 text-sm text-gray-700 outline-none" placeholder="What are you doing today?" />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Key parameters / watch list</label>
-                  <textarea value={planDraft.watchList} onChange={(event) => setPlanDraft((prev) => ({ ...prev, watchList: event.target.value }))} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="Symbols, sectors, signals, macro cues, time windows..." />
+                  <label className="text-sm font-medium text-gray-700">Key parameters / watch list</label>
+                  <textarea value={planDraft.watchList} onChange={(event) => setPlanDraft((prev) => ({ ...prev, watchList: event.target.value }))} rows={3} className="w-full rounded-2xl bg-white/90 border border-gray-300 p-3 text-sm text-gray-700 outline-none" placeholder="Symbols, sectors, signals, macro cues, time windows..." />
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-200">
+                  <label className="block text-sm font-medium text-gray-700">
                     Risk profile
-                    <select value={planDraft.riskProfile} onChange={(event) => setPlanDraft((prev) => ({ ...prev, riskProfile: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none">
+                    <select value={planDraft.riskProfile} onChange={(event) => setPlanDraft((prev) => ({ ...prev, riskProfile: event.target.value }))} className="mt-2 w-full rounded-2xl bg-white/90 border border-gray-300 p-3 text-gray-700 outline-none">
                       <option>Low</option>
                       <option>Medium</option>
                       <option>High</option>
                     </select>
                   </label>
-                  <label className="block text-sm font-medium text-slate-200">
+                  <label className="block text-sm font-medium text-gray-700">
                     Notes
-                    <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none" placeholder="Additional discipline, exit conditions, portfolio sizing" />
+                    <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className="mt-2 w-full rounded-2xl bg-white/90 border border-gray-300 p-3 text-gray-700 outline-none" placeholder="Additional discipline, exit conditions, portfolio sizing" />
                   </label>
                 </div>
                 <div className="flex flex-wrap gap-3">
-                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-gray-900 transition hover:bg-emerald-400">
                     Save morning plan
                   </button>
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-gray-900 transition hover:bg-blue-400 disabled:bg-gray-300">
                     Generate plan from AI
                   </button>
-                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50">
+                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-gray-300 px-5 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-400 disabled:opacity-50">
                     Copy prompt
                   </button>
                 </div>
-                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
+                {planStatus && <p className="mt-3 text-sm text-gray-600">{planStatus}</p>}
               </form>
             ) : (
-              <div className="mt-6 space-y-5 rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
+              <div className="mt-6 space-y-5 rounded-3xl border border-gray-200 bg-white/90 p-5">
                 <div>
-                  <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Morning response</p>
-                  <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.response}</p>
+                  <p className="text-sm uppercase tracking-[0.24em] text-gray-500">Morning response</p>
+                  <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-gray-50 p-4 text-sm text-gray-900">{dailyPlan.response}</p>
                 </div>
                 <div>
                   <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list — ticker symbols</p>
-                    <span className="text-xs text-slate-500">Edit to add/change symbols for auto-trading</span>
+                    <p className="text-sm uppercase tracking-[0.24em] text-gray-500">Watch list — ticker symbols</p>
+                    <span className="text-xs text-gray-400">Edit to add/change symbols for auto-trading</span>
                   </div>
                   <textarea
                     value={dailyPlan.watchList}
@@ -1366,31 +1366,31 @@ export default function App() {
                     }))}
                     rows={2}
                     placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
-                    className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
+                    className="mt-2 w-full rounded-2xl bg-gray-50 border border-gray-300 p-3 text-sm text-gray-900 outline-none"
                   />
                   {planStatus && <p className="mt-2 text-xs text-amber-400">{planStatus}</p>}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-gray-900 transition hover:bg-blue-400 disabled:bg-gray-300">
                     Regenerate plan from AI
                   </button>
-                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50">
+                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-gray-300 px-4 py-3 text-sm font-semibold text-gray-700 transition hover:bg-gray-400 disabled:opacity-50">
                     Copy prompt
                   </button>
-                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
+                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-gray-900 transition hover:bg-rose-600">
                     Clear plan
                   </button>
                 </div>
-                {planInterpretation && <p className="mt-3 text-sm text-slate-300">{planInterpretation}</p>}
-                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
+                {planInterpretation && <p className="mt-3 text-sm text-gray-600">{planInterpretation}</p>}
+                {planStatus && <p className="mt-3 text-sm text-gray-600">{planStatus}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-3xl bg-slate-900/80 p-4">
-                    <p className="text-sm text-slate-400">Risk profile</p>
+                  <div className="rounded-3xl bg-gray-50 p-4">
+                    <p className="text-sm text-gray-500">Risk profile</p>
                     <p className="mt-2 text-lg font-semibold text-white">{dailyPlan.riskProfile}</p>
                   </div>
-                  <div className="rounded-3xl bg-slate-900/80 p-4">
-                    <p className="text-sm text-slate-400">Notes</p>
-                    <p className="mt-2 text-lg text-slate-200">{dailyPlan.notes || '—'}</p>
+                  <div className="rounded-3xl bg-gray-50 p-4">
+                    <p className="text-sm text-gray-500">Notes</p>
+                    <p className="mt-2 text-lg text-gray-700">{dailyPlan.notes || '—'}</p>
                   </div>
                 </div>
               </div>
