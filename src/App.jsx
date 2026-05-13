@@ -852,7 +852,7 @@ export default function App() {
   const todaysMetrics = computeMetrics(selectedDate)
   const dk = theme === 'dark'
   const t = {
-    app:        dk ? 'min-h-screen bg-slate-950 text-slate-100 px-4 py-6'    : 'min-h-screen bg-gray-100 text-gray-900 px-4 py-6',
+    app:        dk ? 'min-h-screen bg-slate-950 text-slate-100'               : 'min-h-screen bg-gray-100 text-gray-900',
     card:       dk ? 'rounded-3xl border border-slate-800 bg-slate-900/90'   : 'rounded-3xl border border-gray-200 bg-white',
     cardInner:  dk ? 'bg-slate-950/80'                                        : 'bg-gray-50',
     input:      dk ? 'bg-slate-900/80 border-slate-700 text-slate-200'       : 'bg-gray-50 border-gray-300 text-gray-800',
@@ -899,36 +899,37 @@ export default function App() {
 
   return (
     <div className={t.app}>
-      <div className="mx-auto max-w-7xl space-y-6">
-        {/* ── Header: glanceable KPI ── */}
-        <header className={`${t.card} p-5 shadow-xl sticky top-4 z-10`}>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-baseline gap-3">
-              <h1 className={`text-xl font-semibold ${t.heading}`}>momoney</h1>
-              <span className={`text-xs ${t.faint}`}>v{VERSION}</span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <div className={`rounded-xl px-3 py-1.5 text-sm font-semibold ${todaysMetrics.totalPL >= 0 ? `bg-emerald-500/15 ${t.plGain}` : `bg-rose-500/15 ${t.plLoss}`}`}>
-                {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
-              </div>
-              <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
-                {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
-              </div>
-              <div className={`rounded-xl px-3 py-1.5 text-sm capitalize ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
-                {tradingPhase.replace(/-/g, ' ')}
-              </div>
-              {lastAutoScan && (
-                <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
-                  {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-              )}
-              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={`rounded-xl ${t.input} border px-3 py-1.5 text-sm outline-none`} />
-              <button type="button" onClick={toggleTheme} className={`rounded-xl px-3 py-1.5 text-sm transition ${dk ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
-                {dk ? '☀ Light' : '☾ Dark'}
-              </button>
-            </div>
+      {/* ── Header: full-width sticky, flush with top ── */}
+      <header className={`sticky top-0 z-10 w-full rounded-b-3xl border-b ${t.divider} ${dk ? 'bg-slate-900/95' : 'bg-white/95'} shadow-xl backdrop-blur px-4 pt-5 pb-4`}>
+        <div className="mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-baseline gap-3">
+            <h1 className={`text-xl font-semibold ${t.heading}`}>momoney</h1>
+            <span className={`text-xs ${t.faint}`}>v{VERSION}</span>
           </div>
-        </header>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className={`rounded-xl px-3 py-1.5 text-sm font-semibold ${todaysMetrics.totalPL >= 0 ? `bg-emerald-500/15 ${t.plGain}` : `bg-rose-500/15 ${t.plLoss}`}`}>
+              {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
+            </div>
+            <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
+              {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
+            </div>
+            <div className={`rounded-xl px-3 py-1.5 text-sm capitalize ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
+              {tradingPhase.replace(/-/g, ' ')}
+            </div>
+            {lastAutoScan && (
+              <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
+                {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </div>
+            )}
+            <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={`rounded-xl ${t.input} border px-3 py-1.5 text-sm outline-none`} />
+            <button type="button" onClick={toggleTheme} className={`rounded-xl px-3 py-1.5 text-sm transition ${dk ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
+              {dk ? '☀ Light' : '☾ Dark'}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
 
         {/* ── Session Navigator (Pending Decisions) ── */}
         <section className={`${t.card} p-5`}>
