@@ -63,6 +63,36 @@ const PHASE_SCHEDULE = [
   { phase: 'after-hours',   signalType: 'hard-exit',      startHour: 15.75, endHour: 16.0,  label: 'Hard Exit',        window: '3:45 PM',          description: 'SELL EVERYTHING — all positions to cash before 3:59 PM. No exceptions.' },
 ]
 
+const PHASE_PROMPTS = {
+  'pre-market': `You are an intraday equity trader with $100,000 and zero commissions. It is pre-market (before 9:30 AM ET). Identify the best 3-5 gapper opportunities for today's open — stocks with 3%+ pre-market moves on meaningful volume or a clear catalyst (earnings, news, upgrade). Focus on gap magnitude, relative volume vs average, and float size. Avoid extended pre-market moves with no volume.
+
+Format your reply EXACTLY as follows:
+Plan: [2-3 sentence pre-market thesis based on the specific movers above]
+Watch list: [3-5 ticker symbols, comma-separated]
+Notes: [key pre-market levels, expected gap fill or continuation, stop loss below pre-market low]`,
+
+  'opening-drive': `You are an intraday equity trader with $100,000 and zero commissions. It is the opening drive (9:30–10:30 AM ET). Identify 3-5 stocks showing the strongest ORB (Opening Range Breakout) setups — price breaking above the first 15-minute high on elevated volume. Prioritize stocks with a clean pre-market range and institutional interest.
+
+Format your reply EXACTLY as follows:
+Plan: [2-3 sentence opening drive thesis using the specific movers above]
+Watch list: [3-5 ticker symbols, comma-separated]
+Notes: [ORB high/low levels, volume confirmation threshold, stop loss at ORB low, target = 2× range]`,
+
+  'midday-fade': `You are an intraday equity trader with $100,000 and zero commissions. It is mid-day (10:30 AM–3:00 PM ET). Identify 3-5 mean-reversion candidates — stocks that are extended (RSI > 70 or RSI < 30) and likely to revert to their VWAP or 20-period MA. Avoid names with ongoing news catalysts. Prefer liquid large-caps for safer fades.
+
+Format your reply EXACTLY as follows:
+Plan: [2-3 sentence midday thesis based on the specific movers above]
+Watch list: [3-5 ticker symbols, comma-separated]
+Notes: [current RSI estimate, distance from VWAP, entry trigger, target VWAP, stop above/below recent extreme]`,
+
+  'power-hour': `You are an intraday equity trader with $100,000 and zero commissions. It is power hour (3:00–3:45 PM ET). ALL positions must be closed by 3:45 PM — no exceptions. Identify 3-5 relative strength leaders to ride into the close and any weak names to fade. Focus on VWAP relationship and momentum. Size down — this is an exit-focused session.
+
+Format your reply EXACTLY as follows:
+Plan: [2-3 sentence power hour thesis — momentum plays and exit plan]
+Watch list: [3-5 ticker symbols, comma-separated]
+Notes: [VWAP levels, position sizing (smaller), hard exit at 3:45 PM, no overnight holds]`,
+}
+
 function detectGapper(symbol, yesterdayClose, currentPrice) {
   if (!yesterdayClose || !currentPrice) return 0
   const gapPercent = Math.abs((currentPrice - yesterdayClose) / yesterdayClose) * 100
@@ -286,6 +316,7 @@ export default function App() {
     })
   }
   const [tradingPhase, setTradingPhase] = useState(updateTradingPhase)
+  const [selectedPhase, setSelectedPhase] = useState(updateTradingPhase)
   const [lastAutoScan, setLastAutoScan] = useState(null)
   const dataRef = useRef(null)
   const marketDataRef = useRef({})
@@ -304,6 +335,35 @@ export default function App() {
     () => data.dailyPlans.find((plan) => plan.date === selectedDate),
     [data.dailyPlans, selectedDate],
   )
+
+  // Sessions: one per phase per day
+  const sessionsForDate = useMemo(
+    () => (data.dailySessions || []).filter((s) => s.date === selectedDate),
+    [data.dailySessions, selectedDate],
+  )
+  const activeSession = useMemo(
+    () => sessionsForDate.find((s) => s.phase === selectedPhase) || null,
+    [sessionsForDate, selectedPhase],
+  )
+  function saveSession(phase, fields) {
+    setData((current) => {
+      const others = (current.dailySessions || []).filter(
+        (s) => !(s.date === selectedDate && s.phase === phase)
+      )
+      return {
+        ...current,
+        dailySessions: [...others, { id: createId(), date: selectedDate, phase, createdAt: new Date().toISOString(), ...fields }],
+      }
+    })
+  }
+  function clearSession(phase) {
+    setData((current) => ({
+      ...current,
+      dailySessions: (current.dailySessions || []).filter(
+        (s) => !(s.date === selectedDate && s.phase === phase)
+      ),
+    }))
+  }
 
   const dailyTrades = useMemo(
     () => data.trades.filter((trade) => trade.date === selectedDate),
@@ -332,79 +392,6 @@ export default function App() {
     }))
   }, [data.activityLog, selectedDate, tradingPhase])
 
-  // Auto-extract symbols when a plan exists but has no watch list
-  useEffect(() => {
-    if (!dailyPlan) { setPlanStatus('DEBUG auto-extract: no dailyPlan'); return }
-    if (dailyPlan.watchList.trim()) { setPlanStatus(`DEBUG auto-extract: skipped — watchList already set: "${dailyPlan.watchList}"`); return }
-    if (selectedDate !== today) { setPlanStatus(`DEBUG auto-extract: skipped — selectedDate ${selectedDate} !== today ${today}`); return }
-    const provider = dataRef.current?.settings?.languageModelProvider || 'gemini'
-    const planText = dailyPlan.response
-    setPlanStatus('DEBUG auto-extract: fetching movers + calling AI...')
-
-    // Fetch live movers first, then ask AI to pick symbols from them
-    fetch('/api/market?type=movers')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((movers) => {
-        let moversContext = ''
-        if (movers) {
-          const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)}`).join(', ')
-          moversContext = `\n\nLive market movers today:\nGainers: ${fmt(movers.gainers)}\nLosers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
-        }
-        setPlanStatus(`DEBUG auto-extract: movers loaded (${movers ? 'ok' : 'null'}), calling AI with provider=${provider}...`)
-        return fetch('/api/ai', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            provider,
-            prompt: `Today is ${selectedDate}.${moversContext}\n\nBased on the live market data above and the following trading strategy, choose the 3-5 best specific ticker symbols to trade today.\n\nStrategy:\n${planText}\n\nReturn ONLY a comma-separated list of ticker symbols. Example: NVDA, TSLA, AAPL`,
-          }),
-        })
-      })
-      .then(async (r) => {
-        const body = await r?.json().catch(() => null)
-        if (!r?.ok) {
-          setPlanStatus(`DEBUG auto-extract: AI FAILED status=${r?.status} — ${JSON.stringify(body)}`)
-          return null
-        }
-        return body
-      })
-      .then((result) => {
-        const symbols = parseWatchSymbols(result?.text || '')
-        setPlanStatus(`DEBUG auto-extract: AI text="${result?.text}" → symbols=[${symbols.join(', ')}]`)
-        if (symbols.length === 0) return
-        setData((current) => ({
-          ...current,
-          dailyPlans: current.dailyPlans.map((p) =>
-            p.id === dailyPlan.id ? { ...p, watchList: symbols.join(', ') } : p,
-          ),
-        }))
-        setPlanStatus(`Watch list auto-populated: ${symbols.join(', ')}`)
-      })
-      .catch((err) => setPlanStatus(`DEBUG auto-extract ERROR: ${err?.message || err}`))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dailyPlan?.id])
-
-  function submitPlan(event) {
-    event.preventDefault()
-    const plan = {
-      id: createId(),
-      date: selectedDate,
-      prompt: DEFAULT_PROMPT,
-      response: planDraft.response.trim(),
-      watchList: planDraft.watchList.trim() || parseAiPlanResponse(planDraft.response.trim()).watchList,
-      riskProfile: planDraft.riskProfile,
-      notes: planDraft.notes.trim(),
-      createdAt: new Date().toISOString(),
-    }
-    if (!plan.response) return
-    const parsedDebug = parseAiPlanResponse(plan.response)
-    setPlanStatus(`DEBUG submitPlan — watchList="${plan.watchList}" | parsed.watchList="${parsedDebug.watchList}" | response length=${plan.response.length}`)
-    setData((current) => ({
-      ...current,
-      dailyPlans: [...current.dailyPlans.filter((item) => item.date !== selectedDate), plan],
-    }))
-    setPlanDraft({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
-  }
 
   function submitTrade(event) {
     event.preventDefault()
@@ -435,13 +422,6 @@ export default function App() {
     }))
   }
 
-  function clearDailyPlan() {
-    setData((current) => ({
-      ...current,
-      dailyPlans: current.dailyPlans.filter((plan) => plan.date !== selectedDate),
-    }))
-    setPlanStatus('')
-  }
 
   async function fetchMarketQuote() {
     const symbol = (marketSymbol || tradeDraft.symbol).trim().toUpperCase()
@@ -653,9 +633,12 @@ export default function App() {
 
   async function refreshAndScan() {
     const current = dataRef.current
-    const watchList = current?.dailyPlans?.find((p) => p.date === selectedDate)?.watchList || ''
+    // Use the active session's watch list (falls back to legacy dailyPlan if no session)
+    const session = (current?.dailySessions || []).find((s) => s.date === selectedDate && s.phase === selectedPhase)
+    const legacyPlan = (current?.dailyPlans || []).find((p) => p.date === selectedDate)
+    const watchList = session?.watchList || legacyPlan?.watchList || ''
     const symbols = parseWatchSymbols(watchList)
-    if (symbols.length === 0) { setScanStatus('No symbols in watch list.'); return }
+    if (symbols.length === 0) { setScanStatus('No symbols in watch list — save a session first.'); return }
 
     setScanning(true)
     setScanStatus(`Fetching data for ${symbols.join(', ')}…`)
@@ -735,99 +718,15 @@ export default function App() {
   useEffect(() => { refreshAndScanRef.current = refreshAndScan })
 
   useEffect(() => {
-    if (!dailyPlan || selectedDate !== today) return
-    // Scan immediately so the user doesn't wait up to 5 minutes
+    if (!activeSession || selectedDate !== today) return
     refreshAndScanRef.current?.()
-    // Then keep scanning every 5 minutes; market-hours guard stays inside the callback
     const intervalId = setInterval(() => {
       refreshAndScanRef.current?.()
     }, 5 * 60 * 1000)
     return () => clearInterval(intervalId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dailyPlan?.id, selectedDate])
+  }, [activeSession?.id, selectedDate])
 
-  async function buildEnrichedPrompt() {
-    let moversContext = ''
-    try {
-      const moversRes = await fetch('/api/market?type=movers')
-      if (moversRes.ok) {
-        const movers = await moversRes.json()
-        const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
-        moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
-      }
-    } catch {
-      // proceed without movers if fetch fails
-    }
-    return `${DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}. Using the live market data above, identify the best intraday opportunities and provide a specific trading plan.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy based on the specific movers above]\nWatch list: [3-5 specific ticker symbols chosen from the movers above, comma-separated]\nNotes: [key price levels, why each symbol, stop loss at 1.5%, hard exit 3:45 PM]`
-  }
-
-  async function copyEnrichedPrompt() {
-    setMarketLoading(true)
-    setPlanStatus('Fetching live data...')
-    try {
-      const prompt = await buildEnrichedPrompt()
-      await navigator.clipboard.writeText(prompt)
-      setPlanStatus('Prompt copied — paste it into Gemini, then paste the response into the plan field below.')
-    } catch {
-      setPlanStatus('Could not copy to clipboard.')
-    } finally {
-      setMarketLoading(false)
-    }
-  }
-
-  async function generateMorningPlanFromAI() {
-    const provider = data.settings.languageModelProvider || 'gemini'
-    setMarketLoading(true)
-    setPlanStatus('Fetching live market movers...')
-
-    try {
-      setPlanStatus('Generating plan from AI...')
-      const prompt = await buildEnrichedPrompt()
-      const response = await fetch('/api/ai', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          provider,
-          prompt,
-        }),
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => null)
-        throw new Error(errorData?.error || 'AI plan generation failed.')
-      }
-
-      const result = await response.json()
-      const aiText = result?.text?.trim() || ''
-      if (!aiText) {
-        throw new Error('AI returned an empty response.')
-      }
-
-      const parsed = parseAiPlanResponse(aiText)
-      const plan = {
-        id: createId(),
-        date: selectedDate,
-        prompt: DEFAULT_PROMPT,
-        response: parsed.plan,
-        watchList: parsed.watchList,
-        riskProfile: 'Medium',
-        notes: parsed.notes,
-        createdAt: new Date().toISOString(),
-      }
-
-      setData((current) => ({
-        ...current,
-        dailyPlans: [...current.dailyPlans.filter((item) => item.date !== selectedDate), plan],
-      }))
-      setPlanStatus('Morning plan generated and saved from AI.')
-    } catch (error) {
-      setPlanStatus(error.message || 'Could not generate a plan from AI.')
-    } finally {
-      setMarketLoading(false)
-    }
-  }
 
 
 
@@ -1012,34 +911,48 @@ export default function App() {
           </div>
         </header>
 
-        {/* ── Pending Decisions ── */}
+        {/* ── Session Navigator (Pending Decisions) ── */}
         <section className={`${t.card} p-5`}>
           <div className="flex items-center justify-between gap-4">
-            <h2 className={`text-base font-semibold ${t.heading}`}>Pending Decisions</h2>
+            <h2 className={`text-base font-semibold ${t.heading}`}>Sessions</h2>
             <span className={`shrink-0 text-xs ${t.faint}`}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-5">
-            {pendingDecisions.map((decision) => (
-              <div key={decision.phase} className={`rounded-2xl border p-3 ${
-                decision.status === 'active'    ? t.decActive :
-                decision.status === 'completed' ? t.decCompleted :
-                                                  t.decPending
-              }`}>
-                <div className="flex items-start justify-between gap-1">
-                  <div className="min-w-0">
-                    <p className={`text-xs ${t.faint} font-mono leading-tight`}>{decision.window}</p>
-                    <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' ? t.heading : t.muted}`}>{decision.label}</p>
-                    {decision.events.length > 0 && (
-                      <p className="mt-1 text-xs text-emerald-400">{decision.events.length} trade{decision.events.length !== 1 ? 's' : ''}</p>
-                    )}
+            {pendingDecisions.map((decision) => {
+              const hasSession = sessionsForDate.some((s) => s.phase === decision.phase)
+              const isSelected = selectedPhase === decision.phase
+              return (
+                <button
+                  key={decision.phase}
+                  type="button"
+                  onClick={() => setSelectedPhase(decision.phase)}
+                  className={`rounded-2xl border p-3 text-left transition ${
+                    isSelected
+                      ? dk ? 'border-blue-500 bg-blue-900/30' : 'border-blue-500 bg-blue-50'
+                      : decision.status === 'active'    ? t.decActive
+                      : decision.status === 'completed' ? t.decCompleted
+                      :                                   t.decPending
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-1">
+                    <div className="min-w-0">
+                      <p className={`text-xs ${t.faint} font-mono leading-tight`}>{decision.window}</p>
+                      <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' || isSelected ? t.heading : t.muted}`}>{decision.label}</p>
+                      {decision.events.length > 0 && (
+                        <p className="mt-1 text-xs text-emerald-500">{decision.events.length} trade{decision.events.length !== 1 ? 's' : ''}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <div className={`shrink-0 w-2 h-2 rounded-full ${
+                        decision.status === 'active' ? 'bg-blue-500 animate-pulse' :
+                        decision.status === 'completed' ? 'bg-emerald-500' : 'bg-gray-300'
+                      }`} />
+                      {hasSession && <div className="w-2 h-2 rounded-full bg-blue-400" title="Session saved" />}
+                    </div>
                   </div>
-                  <div className={`shrink-0 w-2 h-2 rounded-full mt-1 ${
-                    decision.status === 'active' ? 'bg-blue-500 animate-pulse' :
-                    decision.status === 'completed' ? 'bg-emerald-500' : 'bg-gray-400'
-                  }`} />
-                </div>
-              </div>
-            ))}
+                </button>
+              )
+            })}
           </div>
         </section>
 
@@ -1096,7 +1009,7 @@ export default function App() {
               <button
                 type="button"
                 onClick={() => refreshAndScanRef.current?.()}
-                disabled={!dailyPlan || scanning}
+                disabled={!activeSession && !dailyPlan || scanning}
                 className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 ${t.btnScan}`}
               >
                 {scanning ? 'Scanning…' : 'Scan now'}
@@ -1168,7 +1081,7 @@ export default function App() {
                   </div>
                 ) : (
                   <p className={`text-sm ${t.faint}`}>
-                    {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                    {activeSession && parseWatchSymbols(activeSession.watchList).length > 0
                       ? 'Hit "Scan now" to load market data.'
                       : 'Symbols are being identified — scan will begin automatically.'}
                   </p>
@@ -1384,105 +1297,156 @@ export default function App() {
           </article>
         </section>
 
-        {/* ── Current Plan ── */}
-        <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <article className={`${t.card} p-6`}>
-            <h2 className={`text-xl font-semibold ${t.heading}`}>Current Plan</h2>
-            <p className={`mt-2 ${t.muted}`}>Answer the research prompt and describe the decision parameters you will monitor today.</p>
-            {!dailyPlan ? (
-              <form onSubmit={submitPlan} className="mt-6 space-y-5">
-                <div className="space-y-2">
-                  <label className={`text-sm font-medium ${t.body}`}>Research prompt</label>
-                  <textarea readOnly value={DEFAULT_PROMPT} rows={3} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} />
-                </div>
-                <div className="space-y-2">
-                  <label className={`text-sm font-medium ${t.body}`}>Your plan</label>
-                  <textarea value={planDraft.response} onChange={(event) => setPlanDraft((prev) => ({ ...prev, response: event.target.value }))} rows={4} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="What are you doing today?" />
-                </div>
-                <div className="space-y-2">
-                  <label className={`text-sm font-medium ${t.body}`}>Key parameters / watch list</label>
-                  <textarea value={planDraft.watchList} onChange={(event) => setPlanDraft((prev) => ({ ...prev, watchList: event.target.value }))} rows={3} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="Symbols, sectors, signals, macro cues, time windows..." />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className={`block text-sm font-medium ${t.body}`}>
-                    Risk profile
-                    <select value={planDraft.riskProfile} onChange={(event) => setPlanDraft((prev) => ({ ...prev, riskProfile: event.target.value }))} className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`}>
-                      <option>Low</option>
-                      <option>Medium</option>
-                      <option>High</option>
-                    </select>
-                  </label>
-                  <label className={`block text-sm font-medium ${t.body}`}>
-                    Notes
-                    <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`} placeholder="Additional discipline, exit conditions, portfolio sizing" />
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-emerald-400">
-                    Save morning plan
-                  </button>
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:opacity-50">
-                    Generate plan from AI
-                  </button>
-                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className={`inline-flex items-center justify-center rounded-2xl px-5 py-3 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                    Copy prompt
-                  </button>
-                </div>
-                {planStatus && <p className={`mt-3 text-sm ${t.scanStatus}`}>{planStatus}</p>}
-              </form>
-            ) : (
-              <div className={`mt-6 space-y-5 rounded-3xl border ${t.divider} ${dk ? 'bg-slate-950/80' : 'bg-gray-50'} p-5`}>
-                <div>
-                  <p className={`text-sm uppercase tracking-[0.24em] ${t.muted}`}>AI response</p>
-                  <p className={`mt-3 whitespace-pre-wrap rounded-3xl ${dk ? 'bg-slate-800 text-slate-200' : 'bg-white text-gray-800'} p-4 text-sm`}>{dailyPlan.response}</p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className={`text-sm uppercase tracking-[0.24em] ${t.muted}`}>Watch list — ticker symbols</p>
-                    <span className={`text-xs ${t.faint}`}>Edit to add/change symbols for auto-trading</span>
-                  </div>
-                  <textarea
-                    value={dailyPlan.watchList}
-                    onChange={(e) => setData((current) => ({
-                      ...current,
-                      dailyPlans: current.dailyPlans.map((p) =>
-                        p.date === selectedDate ? { ...p, watchList: e.target.value } : p
-                      ),
-                    }))}
-                    rows={2}
-                    placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
-                    className={`mt-2 w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`}
-                  />
-                  {planStatus && <p className={`mt-2 text-xs ${t.scanStatus}`}>{planStatus}</p>}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-blue-400 disabled:opacity-50">
-                    Regenerate plan from AI
-                  </button>
-                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className={`inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>
-                    Copy prompt
-                  </button>
-                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-600 px-4 py-3 text-sm font-semibold text-white transition hover:bg-rose-500">
-                    Clear plan
-                  </button>
-                </div>
-                {planInterpretation && <p className={`mt-3 text-sm ${t.muted}`}>{planInterpretation}</p>}
-                {planStatus && <p className={`mt-3 text-sm ${t.scanStatus}`}>{planStatus}</p>}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className={`rounded-3xl ${dk ? 'bg-slate-800' : 'bg-white'} p-4`}>
-                    <p className={`text-sm ${t.muted}`}>Risk profile</p>
-                    <p className={`mt-2 text-lg font-semibold ${t.heading}`}>{dailyPlan.riskProfile}</p>
-                  </div>
-                  <div className={`rounded-3xl ${dk ? 'bg-slate-800' : 'bg-white'} p-4`}>
-                    <p className={`text-sm ${t.muted}`}>Notes</p>
-                    <p className={`mt-2 text-lg ${t.body}`}>{dailyPlan.notes || '—'}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </article>
+        {/* ── Current Plan (phase-scoped sessions) ── */}
+        {(() => {
+          const phaseInfo = PHASE_SCHEDULE.find((p) => p.phase === selectedPhase)
+          const phasePrompt = PHASE_PROMPTS[selectedPhase]
+          const isAfterHours = selectedPhase === 'after-hours'
 
-        </section>
+          function handleSessionSubmit(e) {
+            e.preventDefault()
+            const parsed = parseAiPlanResponse(planDraft.response.trim())
+            const watchList = planDraft.watchList.trim() || parsed.watchList
+            const debugParsed = parseAiPlanResponse(planDraft.response.trim())
+            setPlanStatus(`Saved — watchList="${watchList}" | parsed="${debugParsed.watchList}"`)
+            saveSession(selectedPhase, {
+              response: planDraft.response.trim(),
+              watchList,
+              notes: planDraft.notes.trim(),
+            })
+            setPlanDraft({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
+          }
+
+          async function handleCopyPrompt() {
+            setMarketLoading(true)
+            setPlanStatus('Fetching live data…')
+            try {
+              let moversContext = ''
+              const moversRes = await fetch('/api/market?type=movers')
+              if (moversRes.ok) {
+                const movers = await moversRes.json()
+                const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
+                moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
+              }
+              const prompt = `${phasePrompt || DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}.`
+              await navigator.clipboard.writeText(prompt)
+              setPlanStatus('Prompt copied — paste into Gemini, then paste the response below.')
+            } catch {
+              setPlanStatus('Could not copy to clipboard.')
+            } finally {
+              setMarketLoading(false)
+            }
+          }
+
+          async function handleGenerateFromAI() {
+            setMarketLoading(true)
+            setPlanStatus('Generating from AI…')
+            try {
+              let moversContext = ''
+              const moversRes = await fetch('/api/market?type=movers')
+              if (moversRes.ok) {
+                const movers = await moversRes.json()
+                const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
+                moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
+              }
+              const provider = data.settings.languageModelProvider || 'gemini'
+              const aiRes = await fetch('/api/ai', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, prompt: `${phasePrompt || DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}.` }),
+              })
+              if (!aiRes.ok) throw new Error('AI request failed')
+              const result = await aiRes.json()
+              const aiText = result?.text?.trim() || ''
+              if (!aiText) throw new Error('AI returned empty response')
+              const parsed = parseAiPlanResponse(aiText)
+              saveSession(selectedPhase, { response: parsed.plan, watchList: parsed.watchList, notes: parsed.notes })
+              setPlanStatus(`Session generated for ${phaseInfo?.label}.`)
+            } catch (err) {
+              setPlanStatus(err.message || 'AI generation failed.')
+            } finally {
+              setMarketLoading(false)
+            }
+          }
+
+          return (
+            <section className={`${t.card} p-6`}>
+              <div className="flex items-center justify-between gap-3 mb-1">
+                <h2 className={`text-xl font-semibold ${t.heading}`}>Current Plan</h2>
+                <span className={`text-sm font-medium px-3 py-1 rounded-xl ${dk ? 'bg-blue-900/40 text-blue-300' : 'bg-blue-100 text-blue-700'}`}>
+                  {phaseInfo?.label || selectedPhase}
+                </span>
+              </div>
+              <p className={`text-sm ${t.muted} mb-6`}>{phaseInfo?.description}</p>
+
+              {isAfterHours ? (
+                <p className={`text-sm ${t.muted}`}>Market closed — review your trades and prepare for tomorrow.</p>
+              ) : !activeSession ? (
+                <form onSubmit={handleSessionSubmit} className="space-y-4">
+                  <div className="space-y-2">
+                    <label className={`text-sm font-medium ${t.body}`}>Phase prompt</label>
+                    <textarea readOnly value={phasePrompt || DEFAULT_PROMPT} rows={3} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input} opacity-70`} />
+                  </div>
+                  <div className="space-y-2">
+                    <label className={`text-sm font-medium ${t.body}`}>Paste AI response</label>
+                    <textarea value={planDraft.response} onChange={(e) => setPlanDraft((p) => ({ ...p, response: e.target.value }))} rows={5} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="Paste Gemini's response here…" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className={`text-sm font-medium ${t.body}`}>Watch list (auto-extracted if blank)</label>
+                    <input value={planDraft.watchList} onChange={(e) => setPlanDraft((p) => ({ ...p, watchList: e.target.value }))} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="AAPL, NVDA, TSLA — leave blank to auto-extract from response" />
+                  </div>
+                  <div className="space-y-2">
+                    <label className={`text-sm font-medium ${t.body}`}>Notes</label>
+                    <input value={planDraft.notes} onChange={(e) => setPlanDraft((p) => ({ ...p, notes: e.target.value }))} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="Key levels, discipline, exit conditions…" />
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    <button type="submit" className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 transition">Save session</button>
+                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Generate from AI</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy prompt</button>
+                  </div>
+                  {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
+                </form>
+              ) : (
+                <div className="space-y-5">
+                  <div>
+                    <p className={`text-xs uppercase tracking-widest ${t.muted} mb-2`}>AI Response</p>
+                    <p className={`whitespace-pre-wrap rounded-2xl p-4 text-sm ${dk ? 'bg-slate-800 text-slate-200' : 'bg-gray-50 text-gray-800'}`}>{activeSession.response}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <p className={`text-xs uppercase tracking-widest ${t.muted}`}>Watch list</p>
+                      <span className={`text-xs ${t.faint}`}>Edit to update symbols</span>
+                    </div>
+                    <textarea
+                      value={activeSession.watchList}
+                      onChange={(e) => setData((current) => ({
+                        ...current,
+                        dailySessions: (current.dailySessions || []).map((s) =>
+                          s.id === activeSession.id ? { ...s, watchList: e.target.value } : s
+                        ),
+                      }))}
+                      rows={2}
+                      placeholder="AAPL, NVDA, TSLA"
+                      className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`}
+                    />
+                  </div>
+                  {activeSession.notes && (
+                    <div>
+                      <p className={`text-xs uppercase tracking-widest ${t.muted} mb-1`}>Notes</p>
+                      <p className={`text-sm ${t.body}`}>{activeSession.notes}</p>
+                    </div>
+                  )}
+                  <div className="flex flex-wrap gap-3">
+                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Regenerate from AI</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy prompt</button>
+                    <button type="button" onClick={() => clearSession(selectedPhase)} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 transition">Clear session</button>
+                  </div>
+                  {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
+                </div>
+              )}
+            </section>
+          )
+        })()}
       </div>
     </div>
   )

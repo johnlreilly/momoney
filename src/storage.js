@@ -2,6 +2,7 @@ const STORAGE_KEY = 'momoney-investor-research'
 
 const initialState = {
   dailyPlans: [],
+  dailySessions: [],
   trades: [],
   marketData: {},
   executedSignals: [],
@@ -19,6 +20,7 @@ export function loadData() {
     return {
       ...initialState,
       ...parsed,
+      dailySessions: parsed.dailySessions || [],
       executedSignals: parsed.executedSignals || [],
       activityLog: parsed.activityLog || [],
       settings: {
