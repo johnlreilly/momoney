@@ -956,51 +956,8 @@ export default function App() {
           </div>
         </section>
 
-        {/* ── Activity Log + Live Signals ── */}
-        <div className="grid gap-6 xl:grid-cols-2">
-          {/* Activity Log */}
-          {(() => {
-            const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
-            return (
-              <section className={`${t.card} p-5`}>
-                <div className="flex items-center justify-between gap-4">
-                  <h2 className={`text-base font-semibold ${t.heading}`}>Activity Log</h2>
-                  <span className={`text-xs ${t.faint}`}>{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
-                </div>
-                <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
-                  {todayLog.length === 0 ? (
-                    <p className={`text-sm ${t.faint}`}>No activity yet — signals will appear here as they fire.</p>
-                  ) : todayLog.map((entry) => (
-                    <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
-                      entry.type === 'hard-exit'      ? t.actExit :
-                      entry.type === 'orb-breakout'   ? t.actOrb :
-                      entry.type === 'gapper'         ? t.actGapper :
-                      entry.type === 'mean-reversion' ? t.actMean :
-                      entry.type === 'power-hour'     ? t.actPower :
-                      t.actTrade
-                    }`}>
-                      <span className={`shrink-0 text-xs ${t.faint} font-mono pt-0.5`}>{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                      <div className="flex-1 min-w-0">
-                        <p className={`text-sm ${t.heading}`}>{entry.message}</p>
-                        {entry.detail && <p className={`text-xs ${t.muted}`}>{entry.detail}</p>}
-                      </div>
-                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                        entry.type === 'hard-exit'      ? t.bRed :
-                        entry.type === 'orb-breakout'   ? t.bBlue :
-                        entry.type === 'gapper'         ? t.bGreen :
-                        entry.type === 'mean-reversion' ? t.bOrange :
-                        entry.type === 'power-hour'     ? t.bCyan :
-                        t.bGray
-                      }`}>{entry.type?.replace(/-/g, ' ')}</span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            )
-          })()}
-
-          {/* Live Signals */}
-          <section className={`${t.card} p-5`}>
+        {/* ── Live Signals ── */}
+        <section className={`${t.card} p-5`}>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className={`text-base font-semibold ${t.heading}`}>Live Signals</h2>
@@ -1090,8 +1047,7 @@ export default function App() {
             {scanStatus && (
               <p className={`mt-3 text-xs font-mono ${t.scanStatus} border-t ${t.divider} pt-3`}>{scanStatus}</p>
             )}
-          </section>
-        </div>
+        </section>
 
         {/* ── Trade Table ── */}
         <section className={`${t.card} p-5`}>
@@ -1443,6 +1399,46 @@ export default function App() {
                   {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
                 </div>
               )}
+            </section>
+          )
+        })()}
+
+        {/* ── Activity Log ── */}
+        {(() => {
+          const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
+          if (todayLog.length === 0) return null
+          return (
+            <section className={`${t.card} p-5`}>
+              <div className="flex items-center justify-between gap-4">
+                <h2 className={`text-base font-semibold ${t.heading}`}>Activity Log</h2>
+                <span className={`text-xs ${t.faint}`}>{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
+              </div>
+              <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
+                {todayLog.map((entry) => (
+                  <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
+                    entry.type === 'hard-exit'      ? t.actExit :
+                    entry.type === 'orb-breakout'   ? t.actOrb :
+                    entry.type === 'gapper'         ? t.actGapper :
+                    entry.type === 'mean-reversion' ? t.actMean :
+                    entry.type === 'power-hour'     ? t.actPower :
+                    t.actTrade
+                  }`}>
+                    <span className={`shrink-0 text-xs ${t.faint} font-mono pt-0.5`}>{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm ${t.heading}`}>{entry.message}</p>
+                      {entry.detail && <p className={`text-xs ${t.muted}`}>{entry.detail}</p>}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      entry.type === 'hard-exit'      ? t.bRed :
+                      entry.type === 'orb-breakout'   ? t.bBlue :
+                      entry.type === 'gapper'         ? t.bGreen :
+                      entry.type === 'mean-reversion' ? t.bOrange :
+                      entry.type === 'power-hour'     ? t.bCyan :
+                      t.bGray
+                    }`}>{entry.type?.replace(/-/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
             </section>
           )
         })()}
