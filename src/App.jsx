@@ -323,9 +323,12 @@ export default function App() {
 
   // Auto-extract symbols when a plan exists but has no watch list
   useEffect(() => {
-    if (!dailyPlan || dailyPlan.watchList.trim() || selectedDate !== today) return
+    if (!dailyPlan) { setPlanStatus('DEBUG auto-extract: no dailyPlan'); return }
+    if (dailyPlan.watchList.trim()) { setPlanStatus(`DEBUG auto-extract: skipped — watchList already set: "${dailyPlan.watchList}"`); return }
+    if (selectedDate !== today) { setPlanStatus(`DEBUG auto-extract: skipped — selectedDate ${selectedDate} !== today ${today}`); return }
     const provider = dataRef.current?.settings?.languageModelProvider || 'gemini'
     const planText = dailyPlan.response
+    setPlanStatus('DEBUG auto-extract: fetching movers + calling AI...')
 
     // Fetch live movers first, then ask AI to pick symbols from them
     fetch('/api/market?type=movers')
@@ -336,6 +339,7 @@ export default function App() {
           const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)}`).join(', ')
           moversContext = `\n\nLive market movers today:\nGainers: ${fmt(movers.gainers)}\nLosers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
         }
+        setPlanStatus(`DEBUG auto-extract: movers loaded (${movers ? 'ok' : 'null'}), calling AI with provider=${provider}...`)
         return fetch('/api/ai', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -345,9 +349,13 @@ export default function App() {
           }),
         })
       })
-      .then((r) => (r?.ok ? r.json() : null))
+      .then((r) => {
+        setPlanStatus(`DEBUG auto-extract: AI response status=${r?.status}, ok=${r?.ok}`)
+        return r?.ok ? r.json() : null
+      })
       .then((result) => {
         const symbols = parseWatchSymbols(result?.text || '')
+        setPlanStatus(`DEBUG auto-extract: AI text="${result?.text}" → symbols=[${symbols.join(', ')}]`)
         if (symbols.length === 0) return
         setData((current) => ({
           ...current,
@@ -357,7 +365,7 @@ export default function App() {
         }))
         setPlanStatus(`Watch list auto-populated: ${symbols.join(', ')}`)
       })
-      .catch(() => {})
+      .catch((err) => setPlanStatus(`DEBUG auto-extract ERROR: ${err?.message || err}`))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyPlan?.id])
 
@@ -368,12 +376,14 @@ export default function App() {
       date: selectedDate,
       prompt: DEFAULT_PROMPT,
       response: planDraft.response.trim(),
-      watchList: planDraft.watchList.trim(),
+      watchList: planDraft.watchList.trim() || parseAiPlanResponse(planDraft.response.trim()).watchList,
       riskProfile: planDraft.riskProfile,
       notes: planDraft.notes.trim(),
       createdAt: new Date().toISOString(),
     }
     if (!plan.response) return
+    const parsedDebug = parseAiPlanResponse(plan.response)
+    setPlanStatus(`DEBUG submitPlan — watchList="${plan.watchList}" | parsed.watchList="${parsedDebug.watchList}" | response length=${plan.response.length}`)
     setData((current) => ({
       ...current,
       dailyPlans: [...current.dailyPlans.filter((item) => item.date !== selectedDate), plan],
