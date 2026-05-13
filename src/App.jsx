@@ -1288,7 +1288,7 @@ export default function App() {
           </div>
 
           <div className={`${t.card} p-6`}>
-            <h2 className={`text-base font-semibold ${t.heading} mb-4`}>Add trade manually</h2>
+            <h2 className={`text-base font-semibold ${t.heading} mb-4`}>Add trade</h2>
             <form onSubmit={submitTrade} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={`block text-sm font-medium ${t.muted}`}>Symbol<input value={tradeDraft.symbol} onChange={(e) => setTradeDraft((p) => ({ ...p, symbol: e.target.value }))} placeholder="AAPL" className={`mt-1 w-full rounded-xl border p-2.5 outline-none text-sm ${t.input}`} /></label>
@@ -1384,10 +1384,10 @@ export default function App() {
           </article>
         </section>
 
-        {/* ── Morning Plan ── */}
+        {/* ── Current Plan ── */}
         <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
           <article className={`${t.card} p-6`}>
-            <h2 className={`text-xl font-semibold ${t.heading}`}>Morning plan</h2>
+            <h2 className={`text-xl font-semibold ${t.heading}`}>Current plan</h2>
             <p className={`mt-2 ${t.muted}`}>Answer the research prompt and describe the decision parameters you will monitor today.</p>
             {!dailyPlan ? (
               <form onSubmit={submitPlan} className="mt-6 space-y-5">
@@ -1433,7 +1433,7 @@ export default function App() {
             ) : (
               <div className={`mt-6 space-y-5 rounded-3xl border ${t.divider} ${dk ? 'bg-slate-950/80' : 'bg-gray-50'} p-5`}>
                 <div>
-                  <p className={`text-sm uppercase tracking-[0.24em] ${t.muted}`}>Morning response</p>
+                  <p className={`text-sm uppercase tracking-[0.24em] ${t.muted}`}>AI response</p>
                   <p className={`mt-3 whitespace-pre-wrap rounded-3xl ${dk ? 'bg-slate-800 text-slate-200' : 'bg-white text-gray-800'} p-4 text-sm`}>{dailyPlan.response}</p>
                 </div>
                 <div>
