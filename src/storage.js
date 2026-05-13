@@ -24,6 +24,10 @@ export function loadData() {
       settings: {
         ...initialState.settings,
         ...(parsed.settings || {}),
+        // Always default to gemini; stale 'openai' values from localStorage are ignored
+        languageModelProvider: (parsed.settings?.languageModelProvider && parsed.settings.languageModelProvider !== 'openai')
+          ? parsed.settings.languageModelProvider
+          : 'gemini',
       },
     }
   } catch (error) {

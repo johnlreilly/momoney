@@ -92,7 +92,23 @@ export default async function handler(req, res) {
 
     const apiKey = process.env.OPENAI_API_KEY
     if (!apiKey) {
-      res.status(500).json({ error: 'Server missing OpenAI API key' })
+      // No OpenAI key — re-route to Gemini silently
+      const geminiKey = process.env.GEMINI_API_KEY
+      if (!geminiKey) {
+        res.status(500).json({ error: 'No AI API key configured on server' })
+        return
+      }
+      const geminiResponse = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(geminiKey)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }], generationConfig: { temperature: 0.7, maxOutputTokens: 400 } }),
+      })
+      if (!geminiResponse.ok) {
+        const errData = await geminiResponse.json().catch(() => null)
+        throw new Error(errData?.error?.message || 'Gemini request failed')
+      }
+      const geminiData = await geminiResponse.json()
+      res.status(200).json({ text: geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '' })
       return
     }
 
