@@ -241,7 +241,7 @@ export default function App() {
   const [planDraft, setPlanDraft] = useState({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
   const [tradeDraft, setTradeDraft] = useState({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
   const [marketSymbol, setMarketSymbol] = useState('')
-  const [intradayInterval, setIntradayInterval] = useState('5min')
+  const [intradayInterval] = useState('5min')
   const [marketStatus, setMarketStatus] = useState('')
   const [planStatus, setPlanStatus] = useState('')
   const [marketLoading, setMarketLoading] = useState(false)
@@ -495,12 +495,6 @@ export default function App() {
     setMarketStatus(`Filled trade prices with ${symbol} latest quote.`)
   }
 
-  function scanForSignals() {
-    const symbols = parseWatchSymbols(dailyPlan?.watchList || '')
-    const { signals, phase } = buildSignals(symbols, data.marketData)
-    setTradingPhase(phase)
-    setLiveSignals(signals)
-  }
 
   function autoExecuteSignals(signals, phase, freshMarketData, todayStr) {
     const current = dataRef.current
@@ -785,31 +779,216 @@ export default function App() {
   const marketKey = (marketSymbol || tradeDraft.symbol).trim().toUpperCase()
   const currentMarketData = data.marketData[marketKey] || null
   const currentQuote = currentMarketData?.quote
-  const currentSeries = currentMarketData?.dailySeries || []
+
   const currentIntraday = currentMarketData?.intraday || []
   const todaysMetrics = computeMetrics(selectedDate)
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 px-4 py-6">
-      <div className="mx-auto max-w-7xl space-y-8">
-        <header className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 shadow-xl shadow-black/30">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Research Exercise</p>
-              <h1 className="mt-3 text-3xl font-semibold text-white">Daily intraday investor planner</h1>
-              <p className="mt-2 max-w-2xl text-slate-400">
-                Log your morning market strategy, capture all hypothetical trades, and measure whether the day followed your plan.
-              </p>
-              <p className="mt-1 text-xs text-slate-500">Version: {VERSION}</p>
+      <div className="mx-auto max-w-7xl space-y-6">
+        {/* ── Header: glanceable KPI ── */}
+        <header className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5 shadow-xl shadow-black/30">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-xl font-semibold text-white">momoney</h1>
+              <span className="text-xs text-slate-500">v{VERSION}</span>
             </div>
-            <div className="space-y-2">
-              <div className="rounded-3xl bg-slate-800/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
-                Current day: <span className="font-semibold text-white">{displayDate(selectedDate)}</span>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className={`rounded-2xl px-4 py-2 text-lg font-bold ${todaysMetrics.totalPL >= 0 ? 'bg-emerald-500/15 text-emerald-400' : 'bg-rose-500/15 text-rose-400'}`}>
+                {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
               </div>
+              <div className="rounded-2xl bg-slate-800 px-4 py-2 text-sm text-slate-300">
+                {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
+              </div>
+              <div className="rounded-2xl bg-slate-800 px-4 py-2 text-sm capitalize text-slate-300">
+                {tradingPhase.replace(/-/g, ' ')}
+              </div>
+              {lastAutoScan && (
+                <div className="rounded-2xl bg-slate-800 px-4 py-2 text-xs text-slate-400">
+                  scanned {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </div>
+              )}
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className="rounded-2xl bg-slate-800 border border-slate-700 px-3 py-2 text-sm text-slate-200 outline-none" />
             </div>
           </div>
         </header>
 
+        {/* ── Pending Decisions ── */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-base font-semibold text-white">Pending decisions</h2>
+            <span className="shrink-0 text-xs text-slate-500">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
+          </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-5">
+            {pendingDecisions.map((decision) => (
+              <div key={decision.phase} className={`rounded-2xl border p-3 ${
+                decision.status === 'active'    ? 'border-amber-600/50 bg-amber-950/20' :
+                decision.status === 'completed' ? 'border-slate-700/30 bg-slate-900/20 opacity-50' :
+                                                  'border-slate-700/40 bg-slate-900/40'
+              }`}>
+                <div className="flex items-start justify-between gap-1">
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500 font-mono leading-tight">{decision.window}</p>
+                    <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' ? 'text-white' : 'text-slate-300'}`}>{decision.label}</p>
+                    {decision.events.length > 0 && (
+                      <p className="mt-1 text-xs text-emerald-400">{decision.events.length} trade{decision.events.length !== 1 ? 's' : ''}</p>
+                    )}
+                  </div>
+                  <div className={`shrink-0 w-2 h-2 rounded-full mt-1 ${
+                    decision.status === 'active' ? 'bg-amber-400 animate-pulse' :
+                    decision.status === 'completed' ? 'bg-emerald-500' : 'bg-slate-600'
+                  }`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Activity Log ── */}
+        {(() => {
+          const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
+          if (todayLog.length === 0) return null
+          return (
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+              <div className="flex items-center justify-between gap-4">
+                <h2 className="text-base font-semibold text-white">Activity log</h2>
+                <span className="text-xs text-slate-500">{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
+              </div>
+              <div className="mt-4 space-y-2 max-h-56 overflow-y-auto">
+                {todayLog.map((entry) => (
+                  <div key={entry.id} className={`flex items-start gap-3 rounded-xl p-2.5 ${
+                    entry.type === 'hard-exit'      ? 'bg-red-950/40 border border-red-800/40' :
+                    entry.type === 'orb-breakout'   ? 'bg-blue-950/30 border border-blue-800/30' :
+                    entry.type === 'gapper'         ? 'bg-green-950/30 border border-green-800/30' :
+                    entry.type === 'mean-reversion' ? 'bg-orange-950/30 border border-orange-800/30' :
+                    entry.type === 'power-hour'     ? 'bg-cyan-950/30 border border-cyan-800/30' :
+                    'bg-slate-800/40 border border-slate-700/40'
+                  }`}>
+                    <span className="shrink-0 text-xs text-slate-500 font-mono pt-0.5">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm text-white">{entry.message}</p>
+                      {entry.detail && <p className="text-xs text-slate-400">{entry.detail}</p>}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      entry.type === 'hard-exit'      ? 'bg-red-500/20 text-red-300' :
+                      entry.type === 'orb-breakout'   ? 'bg-blue-500/20 text-blue-300' :
+                      entry.type === 'gapper'         ? 'bg-green-500/20 text-green-300' :
+                      entry.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
+                      entry.type === 'power-hour'     ? 'bg-cyan-500/20 text-cyan-300' :
+                      'bg-slate-500/20 text-slate-300'
+                    }`}>{entry.type?.replace(/-/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        })()}
+
+        {/* ── Trade Table ── */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-base font-semibold text-white">Trades — {displayDate(selectedDate)}</h2>
+            <div className="flex gap-2">
+              <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-slate-950 transition hover:bg-emerald-500">Export day</button>
+              <button type="button" onClick={exportAllCsv} className="rounded-xl bg-slate-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-slate-500">Export all</button>
+            </div>
+          </div>
+          <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800 bg-slate-950/80">
+            <table className="min-w-full border-collapse text-left text-sm">
+              <thead className="bg-slate-900 text-slate-400">
+                <tr>
+                  <th className="px-4 py-2.5">Symbol</th>
+                  <th className="px-4 py-2.5">Action</th>
+                  <th className="px-4 py-2.5">Qty</th>
+                  <th className="px-4 py-2.5">Entry</th>
+                  <th className="px-4 py-2.5">Exit</th>
+                  <th className="px-4 py-2.5">P/L</th>
+                  <th className="px-4 py-2.5">Risk</th>
+                  <th className="px-4 py-2.5">Notes</th>
+                  <th className="px-4 py-2.5"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyTrades.length === 0 ? (
+                  <tr><td colSpan="9" className="px-4 py-8 text-center text-slate-500">No trades yet — auto-trades will appear here as signals fire.</td></tr>
+                ) : (
+                  dailyTrades.map((trade) => {
+                    const pl = computeTradePL(trade)
+                    const isAuto = trade.notes?.startsWith('Auto')
+                    return (
+                      <tr key={trade.id} className={`border-t border-slate-800 ${isAuto ? 'bg-slate-900/40' : ''}`}>
+                        <td className="px-4 py-2.5 text-slate-100">
+                          <div className="flex items-center gap-2">
+                            {trade.symbol}
+                            {isAuto && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">auto</span>}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2.5 text-slate-100">{trade.action}</td>
+                        <td className="px-4 py-2.5 text-slate-100">{trade.quantity}</td>
+                        <td className="px-4 py-2.5 text-slate-100">${trade.entryPrice.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-slate-100">${trade.exitPrice.toFixed(2)}</td>
+                        <td className={`px-4 py-2.5 font-semibold ${pl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${pl.toFixed(2)}</td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs">{trade.riskRating}</td>
+                        <td className="px-4 py-2.5 text-slate-400 text-xs max-w-[16rem] truncate">{trade.notes || '—'}</td>
+                        <td className="px-4 py-2.5">
+                          <button onClick={() => deleteTrade(trade.id)} className="rounded-xl bg-rose-500/20 px-2 py-1 text-xs text-rose-300 transition hover:bg-rose-500/40">Del</button>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        {/* ── Live Signals ── */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
+          <div className="flex items-center justify-between gap-4">
+            <h2 className="text-base font-semibold text-white">Live signals</h2>
+            <span className="text-xs text-slate-500">{liveSignals.length} active</span>
+          </div>
+          {liveSignals.length > 0 ? (
+            <div className="mt-4 space-y-2">
+              {liveSignals.map((signal) => (
+                <div key={signal.id} className={`rounded-xl p-3 border ${
+                  signal.type === 'gapper'         ? 'border-green-800/50 bg-green-950/30' :
+                  signal.type === 'orb-breakout'   ? 'border-blue-800/50 bg-blue-950/30' :
+                  signal.type === 'mean-reversion' ? 'border-orange-800/50 bg-orange-950/30' :
+                  signal.type === 'power-hour'     ? 'border-cyan-800/50 bg-cyan-950/30' :
+                  'border-red-800/50 bg-red-950/30'
+                }`}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-white">{signal.message}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{signal.action}</p>
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      signal.type === 'gapper'         ? 'bg-green-500/20 text-green-300' :
+                      signal.type === 'orb-breakout'   ? 'bg-blue-500/20 text-blue-300' :
+                      signal.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
+                      signal.type === 'power-hour'     ? 'bg-cyan-500/20 text-cyan-300' :
+                      'bg-red-500/20 text-red-300'
+                    }`}>{signal.type.replace(/-/g, ' ')}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-slate-500">
+              {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                ? 'Waiting for signals — auto-scan runs every 5 min during market hours.'
+                : 'Symbols are being identified — scan will begin automatically.'}
+            </p>
+          )}
+        </section>
+
+        {/* ══ SETUP — below the fold ══ */}
+        <div className="border-t border-slate-800 pt-2">
+          <p className="text-xs uppercase tracking-widest text-slate-600 text-center pb-4">Setup &amp; tools</p>
+        </div>
+
+        {/* ── Morning Plan ── */}
         <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
           <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
             <h2 className="text-xl font-semibold text-white">Morning plan</h2>
@@ -883,9 +1062,6 @@ export default function App() {
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
                     Regenerate plan from AI
                   </button>
-                  <button type="button" onClick={scanForSignals} disabled={marketLoading || !dailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-500 disabled:bg-slate-700">
-                    Scan now
-                  </button>
                   <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
                     Clear plan
                   </button>
@@ -906,468 +1082,69 @@ export default function App() {
             )}
           </article>
 
-          <aside className="space-y-6 rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-            <div className="rounded-3xl bg-slate-950/80 p-5">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Today’s KPI</p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-3xl bg-slate-900/80 p-4">
-                  <p className="text-sm text-slate-400">Net P/L</p>
-                  <p className={`mt-2 text-2xl font-semibold ${todaysMetrics.totalPL >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${todaysMetrics.totalPL.toFixed(2)}</p>
-                </div>
-                <div className="rounded-3xl bg-slate-900/80 p-4">
-                  <p className="text-sm text-slate-400">Trades</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{todaysMetrics.trades}</p>
-                </div>
-                <div className="rounded-3xl bg-slate-900/80 p-4">
-                  <p className="text-sm text-slate-400">Avg risk rating</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{todaysMetrics.avgRiskRating}</p>
-                </div>
-                <div className="rounded-3xl bg-slate-900/80 p-4">
-                  <p className="text-sm text-slate-400">Risk / reward</p>
-                  <p className="mt-2 text-2xl font-semibold text-white">{todaysMetrics.riskReward}</p>
-                </div>
-              </div>
-            </div>
-            <div className="rounded-3xl bg-slate-950/80 p-5">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Date selector</p>
-              <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="mt-3 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
-            </div>
-          </aside>
         </section>
 
-        {/* Pending Decisions */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-xl font-semibold text-white">Pending decisions</h2>
-              <p className="mt-1 text-sm text-slate-400">Today's trading schedule — the app auto-executes each phase as market hours progress.</p>
-            </div>
-            <span className="shrink-0 rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400">
-              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET
-            </span>
-          </div>
-          <div className="mt-5 space-y-3">
-            {pendingDecisions.map((decision) => (
-              <div key={decision.phase} className={`rounded-2xl border p-4 transition ${
-                decision.status === 'active'
-                  ? 'border-amber-600/50 bg-amber-950/20'
-                  : decision.status === 'completed'
-                  ? 'border-slate-700/40 bg-slate-900/30 opacity-60'
-                  : 'border-slate-700/50 bg-slate-900/50'
-              }`}>
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs text-slate-500 font-mono">{decision.window}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                        decision.status === 'active'    ? 'bg-amber-500/20 text-amber-300' :
-                        decision.status === 'completed' ? 'bg-slate-600/40 text-slate-400' :
-                                                          'bg-slate-700/40 text-slate-400'
-                      }`}>
-                        {decision.status === 'active' ? 'Active now' : decision.status === 'completed' ? 'Done' : 'Pending'}
-                      </span>
-                      {decision.events.length > 0 && (
-                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
-                          {decision.events.length} trade{decision.events.length !== 1 ? 's' : ''} executed
-                        </span>
-                      )}
-                    </div>
-                    <p className={`mt-1 font-semibold ${decision.status === 'active' ? 'text-white' : 'text-slate-300'}`}>
-                      {decision.label}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{decision.description}</p>
-                    {decision.events.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {decision.events.map((e) => (
-                          <span key={e.id} className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                            {e.message}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className={`shrink-0 w-2 h-2 rounded-full mt-2 ${
-                    decision.status === 'active'    ? 'bg-amber-400 animate-pulse' :
-                    decision.status === 'completed' ? 'bg-emerald-500' :
-                                                      'bg-slate-600'
-                  }`} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Live Trading Interpreter */}
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-white">Live trading interpreter</h2>
-              <p className="mt-2 text-slate-400">Real-time signal detection based on market phase and technical patterns.</p>
-            </div>
-            <div className="text-right text-xs text-slate-500 shrink-0">
-              {lastAutoScan
-                ? <span>Auto-scanned {new Date(lastAutoScan).toLocaleTimeString()}</span>
-                : selectedDate === today && dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
-                  ? <span className="text-amber-500">Auto-scan active — runs every 5 min during market hours</span>
-                  : null}
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 sm:grid-cols-2">
-            <div className="rounded-3xl bg-slate-950/80 p-4">
-              <p className="text-sm text-slate-400">Current Phase</p>
-              <p className="mt-2 text-lg font-semibold capitalize text-white">{tradingPhase.replace(/-/g, ' ')}</p>
-              <p className="mt-1 text-xs text-slate-500">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
-            </div>
-            <div className="rounded-3xl bg-slate-950/80 p-4">
-              <p className="text-sm text-slate-400">Active Signals</p>
-              <p className="mt-2 text-lg font-semibold text-amber-400">{liveSignals.length}</p>
-              <p className="mt-1 text-xs text-slate-500">detected this scan</p>
-            </div>
-          </div>
-
-          {liveSignals.length > 0 && (
-            <div className="mt-6 space-y-3">
-              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Signal alerts</p>
-              {liveSignals.map((signal) => (
-                <div key={signal.id} className={`rounded-2xl p-4 border ${
-                  signal.type === 'gapper' ? 'border-green-800/50 bg-green-950/30' :
-                  signal.type === 'orb-breakout' ? 'border-blue-800/50 bg-blue-950/30' :
-                  signal.type === 'mean-reversion' ? 'border-orange-800/50 bg-orange-950/30' :
-                  signal.type === 'power-hour' ? 'border-cyan-800/50 bg-cyan-950/30' :
-                  'border-red-800/50 bg-red-950/30'
-                }`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <p className="font-semibold text-white">{signal.message}</p>
-                      <p className="mt-1 text-sm text-slate-300">{signal.action}</p>
-                      <p className="mt-1 text-xs text-slate-500">{new Date(signal.timestamp).toLocaleTimeString()}</p>
-                    </div>
-                    <span className={`ml-3 inline-block rounded-full px-3 py-1 text-xs font-medium ${
-                      signal.type === 'gapper' ? 'bg-green-500/20 text-green-300' :
-                      signal.type === 'orb-breakout' ? 'bg-blue-500/20 text-blue-300' :
-                      signal.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
-                      signal.type === 'power-hour' ? 'bg-cyan-500/20 text-cyan-300' :
-                      'bg-red-500/20 text-red-300'
-                    }`}>
-                      {signal.type.replace('-', ' ')}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {liveSignals.length === 0 && (
-            <div className="mt-6 rounded-3xl border border-slate-700/50 bg-slate-800/30 p-6 text-center">
-              <p className="text-slate-400">
-                {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
-                  ? 'Waiting for signals. Auto-scan runs every 5 min during market hours.'
-                  : 'Symbols are being identified — scan will begin automatically.'}
-              </p>
-            </div>
-          )}
-        </section>
-
-        {/* Activity Log */}
-        {(() => {
-          const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
-          if (todayLog.length === 0) return null
-          return (
-            <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-white">Activity log</h2>
-                  <p className="mt-1 text-slate-400 text-sm">Auto-executed trades and signals for {displayDate(selectedDate)}.</p>
-                </div>
-                <span className="text-xs text-slate-500">{todayLog.length} event{todayLog.length !== 1 ? 's' : ''}</span>
-              </div>
-              <div className="mt-5 space-y-2 max-h-72 overflow-y-auto">
-                {todayLog.map((entry) => (
-                  <div key={entry.id} className={`flex items-start gap-3 rounded-2xl p-3 ${
-                    entry.type === 'hard-exit' ? 'bg-red-950/40 border border-red-800/40' :
-                    entry.type === 'orb-breakout' ? 'bg-blue-950/30 border border-blue-800/30' :
-                    entry.type === 'gapper' ? 'bg-green-950/30 border border-green-800/30' :
-                    entry.type === 'mean-reversion' ? 'bg-orange-950/30 border border-orange-800/30' :
-                    entry.type === 'power-hour' ? 'bg-cyan-950/30 border border-cyan-800/30' :
-                    'bg-slate-800/40 border border-slate-700/40'
-                  }`}>
-                    <span className="mt-0.5 shrink-0 text-xs text-slate-500">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white">{entry.message}</p>
-                      {entry.detail && <p className="mt-0.5 text-xs text-slate-400">{entry.detail}</p>}
-                    </div>
-                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
-                      entry.type === 'hard-exit' ? 'bg-red-500/20 text-red-300' :
-                      entry.type === 'orb-breakout' ? 'bg-blue-500/20 text-blue-300' :
-                      entry.type === 'gapper' ? 'bg-green-500/20 text-green-300' :
-                      entry.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
-                      entry.type === 'power-hour' ? 'bg-cyan-500/20 text-cyan-300' :
-                      'bg-slate-500/20 text-slate-300'
-                    }`}>{entry.type?.replace(/-/g, ' ')}</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          )
-        })()}
-
-        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-xl font-semibold text-white">Trade journal</h2>
-              <p className="mt-2 text-slate-400">Auto-executed trades appear here throughout the day. You can also add trades manually below.</p>
-            </div>
-            <div className="flex flex-col gap-3 sm:items-end">
-              <div className="rounded-3xl bg-slate-950/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
-                Starting capital: <span className="font-semibold text-white">${STARTING_CASH.toLocaleString()}</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                <button type="button" onClick={exportDayCsv} className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                  Export day CSV
-                </button>
-                <button type="button" onClick={exportAllCsv} className="inline-flex items-center justify-center rounded-2xl bg-slate-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-slate-400">
-                  Export all CSV
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 grid gap-4 rounded-3xl border border-slate-800 bg-slate-950/80 p-5 sm:grid-cols-[1.1fr_0.9fr]">
-            <div className="space-y-4">
+        {/* ── Market Tools + Manual Trade Entry ── */}
+        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6 space-y-4">
+            <h2 className="text-base font-semibold text-white">Market data</h2>
+            <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium text-slate-200">
                 AI provider
-                <select value={data.settings.languageModelProvider || 'openai'} onChange={(event) => setData((current) => ({
-                  ...current,
-                  settings: {
-                    ...current.settings,
-                    languageModelProvider: event.target.value,
-                  },
-                }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
+                <select value={data.settings.languageModelProvider || 'openai'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
                   <option value="openai">OpenAI</option>
                   <option value="gemini">Gemini</option>
                 </select>
               </label>
-              <div className="rounded-3xl bg-slate-950/80 p-4 text-sm text-slate-300">
-                <p className="text-slate-400">API secrets are stored on the server.</p>
-                <p className="mt-2">Deploy with your environment variables instead of saving keys in the browser.</p>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-200">
-                  Symbol
-                  <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
-                </label>
-                <label className="block text-sm font-medium text-slate-200">
-                  Interval
-                  <select value={intradayInterval} onChange={(event) => setIntradayInterval(event.target.value)} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
-                    <option>5min</option>
-                    <option>15min</option>
-                    <option>30min</option>
-                    <option>60min</option>
-                  </select>
-                </label>
-              </div>
-              <div className="flex flex-wrap gap-3 pt-6">
-                <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="inline-flex items-center justify-center rounded-2xl bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400 disabled:bg-slate-700">
-                  Fetch quote
-                </button>
-                <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="inline-flex items-center justify-center rounded-2xl bg-violet-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-violet-400 disabled:bg-slate-700">
-                  Load daily history
-                </button>
-                <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="inline-flex items-center justify-center rounded-2xl bg-fuchsia-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-400 disabled:bg-fuchsia-700">
-                  Load intraday data
-                </button>
-              </div>
-              <p className="text-sm text-slate-400">{marketStatus || 'Market and AI keys are stored securely on the server.'}</p>
-            </div>
-            <div className="rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-300">
-              {currentQuote ? (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-4">
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest quote</p>
-                      <p className="mt-2 text-lg font-semibold text-white">{currentQuote.symbol}</p>
-                    </div>
-                    <div className="rounded-2xl bg-slate-950/80 px-3 py-2 text-xs uppercase tracking-[0.18em] text-slate-300">{currentQuote.changePercent}</div>
-                  </div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-3xl bg-slate-950/80 p-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Price</p>
-                      <p className="mt-2 text-lg font-semibold text-white">${currentQuote.price.toFixed(2)}</p>
-                    </div>
-                    <div className="rounded-3xl bg-slate-950/80 p-3">
-                      <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Prev close</p>
-                      <p className="mt-2 text-lg font-semibold text-white">${currentQuote.previousClose.toFixed(2)}</p>
-                    </div>
-                  </div>
-                  <button type="button" onClick={fillTradePrices} className="mt-3 inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                    Use latest quote for trade prices
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <p className="text-slate-400">Market quote will appear here after fetch.</p>
-                </div>
-              )}
-              {currentSeries.length > 0 && (
-                <div className="mt-4 rounded-3xl bg-slate-950/80 p-3">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Recent daily closes</p>
-                  <div className="mt-3 space-y-2 text-slate-100">
-                    {currentSeries.slice(0, 3).map((item) => (
-                      <div key={item.date} className="flex items-center justify-between rounded-2xl bg-slate-900/80 px-3 py-2">
-                        <span className="text-sm">{item.date}</span>
-                        <span className="text-sm font-semibold">${item.close.toFixed(2)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              {currentIntraday.length > 0 && (
-                <div className="mt-4 rounded-3xl bg-slate-950/80 p-3">
-                  <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Intraday summary</p>
-                  <div className="mt-3 space-y-2 text-slate-100">
-                    <div className="grid gap-3 sm:grid-cols-3">
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Points</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{currentIntraday.length}</p>
-                      </div>
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest</p>
-                        <p className="mt-2 text-lg font-semibold text-white">${currentIntraday[0].close.toFixed(2)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest time</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{currentIntraday[0].dateTime}</p>
-                      </div>
-                    </div>
-                    <div className="grid gap-3 sm:grid-cols-4">
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">High</p>
-                        <p className="mt-2 text-lg font-semibold text-white">${Math.max(...currentIntraday.map((point) => point.high)).toFixed(2)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Low</p>
-                        <p className="mt-2 text-lg font-semibold text-white">${Math.min(...currentIntraday.map((point) => point.low)).toFixed(2)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">VWAP</p>
-                        <p className="mt-2 text-lg font-semibold text-cyan-300">${(calculateVWAP(currentIntraday) ?? 0).toFixed(2)}</p>
-                      </div>
-                      <div className="rounded-2xl bg-slate-900/80 p-3">
-                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest volume</p>
-                        <p className="mt-2 text-lg font-semibold text-white">{currentIntraday[0].volume.toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <form onSubmit={submitTrade} className="mt-6 grid gap-4 rounded-3xl border border-slate-800 bg-slate-950/80 p-5 sm:grid-cols-2 xl:grid-cols-[1fr_0.8fr]">
-            <div className="grid gap-4">
               <label className="block text-sm font-medium text-slate-200">
                 Symbol
-                <input value={tradeDraft.symbol} onChange={(event) => setTradeDraft((prev) => ({ ...prev, symbol: event.target.value }))} placeholder="AAPL, MSFT" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
+                <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
               </label>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-200">
-                  Action
-                  <select value={tradeDraft.action} onChange={(event) => setTradeDraft((prev) => ({ ...prev, action: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
-                    <option>Buy</option>
-                    <option>Sell</option>
-                  </select>
-                </label>
-                <label className="block text-sm font-medium text-slate-200">
-                  Quantity
-                  <input type="number" value={tradeDraft.quantity} onChange={(event) => setTradeDraft((prev) => ({ ...prev, quantity: event.target.value }))} placeholder="100" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
-                </label>
-              </div>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-medium text-slate-200">
-                  Entry price
-                  <input type="number" step="0.01" value={tradeDraft.entryPrice} onChange={(event) => setTradeDraft((prev) => ({ ...prev, entryPrice: event.target.value }))} placeholder="150.00" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
-                </label>
-                <label className="block text-sm font-medium text-slate-200">
-                  Exit price
-                  <input type="number" step="0.01" value={tradeDraft.exitPrice} onChange={(event) => setTradeDraft((prev) => ({ ...prev, exitPrice: event.target.value }))} placeholder="152.00" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
-                </label>
-              </div>
             </div>
-            <div className="grid gap-4">
-              <label className="block text-sm font-medium text-slate-200">
-                Risk rating
-                <select value={tradeDraft.riskRating} onChange={(event) => setTradeDraft((prev) => ({ ...prev, riskRating: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
-                  <option>Low</option>
-                  <option>Medium</option>
-                  <option>High</option>
-                </select>
-              </label>
-              <label className="block text-sm font-medium text-slate-200">
-                Trade notes
-                <textarea value={tradeDraft.notes} onChange={(event) => setTradeDraft((prev) => ({ ...prev, notes: event.target.value }))} rows={4} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" placeholder="Why this trade, watchlist signal, exit conditions..." />
-              </label>
-              <button type="submit" className="mt-auto inline-flex items-center justify-center rounded-2xl bg-sky-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-sky-400">
-                Add trade
-              </button>
+            <div className="flex flex-wrap gap-3">
+              <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:bg-slate-700">Fetch quote</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:bg-slate-700">Daily history</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="rounded-2xl bg-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:bg-slate-700">Intraday</button>
             </div>
-          </form>
-
-          <div className="mt-6 overflow-x-auto rounded-3xl border border-slate-800 bg-slate-950/80">
-            <table className="min-w-full border-collapse text-left text-sm">
-              <thead className="bg-slate-900 text-slate-400">
-                <tr>
-                  <th className="px-4 py-3">Symbol</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Qty</th>
-                  <th className="px-4 py-3">Entry</th>
-                  <th className="px-4 py-3">Exit</th>
-                  <th className="px-4 py-3">P/L</th>
-                  <th className="px-4 py-3">Risk</th>
-                  <th className="px-4 py-3">Notes</th>
-                  <th className="px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {dailyTrades.length === 0 ? (
-                  <tr>
-                    <td colSpan="9" className="px-4 py-8 text-center text-slate-400">
-                      No trades recorded for this day yet.
-                    </td>
-                  </tr>
-                ) : (
-                  dailyTrades.map((trade) => {
-                    const pl = computeTradePL(trade)
-                    const isAuto = trade.notes?.startsWith('Auto')
-                    return (
-                      <tr key={trade.id} className={`border-t border-slate-800 ${isAuto ? 'bg-slate-900/40' : ''}`}>
-                        <td className="px-4 py-3 text-slate-100">
-                          <div className="flex items-center gap-2">
-                            {trade.symbol}
-                            {isAuto && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">auto</span>}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-slate-100">{trade.action}</td>
-                        <td className="px-4 py-3 text-slate-100">{trade.quantity}</td>
-                        <td className="px-4 py-3 text-slate-100">${trade.entryPrice.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-slate-100">${trade.exitPrice.toFixed(2)}</td>
-                        <td className={`px-4 py-3 font-semibold ${pl >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>${pl.toFixed(2)}</td>
-                        <td className="px-4 py-3 text-slate-100">{trade.riskRating}</td>
-                        <td className="px-4 py-3 text-slate-300 max-w-[18rem] truncate">{trade.notes || '—'}</td>
-                        <td className="px-4 py-3">
-                          <button onClick={() => deleteTrade(trade.id)} className="rounded-2xl bg-rose-500 px-3 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-slate-950 transition hover:bg-rose-400">
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })
+            {marketStatus && <p className="text-xs text-slate-400">{marketStatus}</p>}
+            {currentQuote && (
+              <div className="rounded-2xl bg-slate-950/80 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-semibold text-white">{currentQuote.symbol} <span className="text-slate-400 text-sm font-normal">${currentQuote.price.toFixed(2)}</span></p>
+                  <span className="text-xs text-slate-400">{currentQuote.changePercent}</span>
+                </div>
+                {currentIntraday.length > 0 && (
+                  <div className="grid grid-cols-4 gap-2 text-xs">
+                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">High</p><p className="font-semibold text-white">${Math.max(...currentIntraday.map((p) => p.high)).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">Low</p><p className="font-semibold text-white">${Math.min(...currentIntraday.map((p) => p.low)).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">VWAP</p><p className="font-semibold text-cyan-300">${(calculateVWAP(currentIntraday) ?? 0).toFixed(2)}</p></div>
+                    <div className="rounded-xl bg-slate-900/80 p-2"><p className="text-slate-500">Vol</p><p className="font-semibold text-white">{currentIntraday[0].volume.toLocaleString()}</p></div>
+                  </div>
                 )}
-              </tbody>
-            </table>
+                <button type="button" onClick={fillTradePrices} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Use for trade prices</button>
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+            <h2 className="text-base font-semibold text-white mb-4">Add trade manually</h2>
+            <form onSubmit={submitTrade} className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="block text-sm font-medium text-slate-300">Symbol<input value={tradeDraft.symbol} onChange={(e) => setTradeDraft((p) => ({ ...p, symbol: e.target.value }))} placeholder="AAPL" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-slate-300">Action<select value={tradeDraft.action} onChange={(e) => setTradeDraft((p) => ({ ...p, action: e.target.value }))} className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm"><option>Buy</option><option>Sell</option></select></label>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <label className="block text-sm font-medium text-slate-300">Qty<input type="number" value={tradeDraft.quantity} onChange={(e) => setTradeDraft((p) => ({ ...p, quantity: e.target.value }))} placeholder="100" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-slate-300">Entry<input type="number" step="0.01" value={tradeDraft.entryPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, entryPrice: e.target.value }))} placeholder="150.00" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+                <label className="block text-sm font-medium text-slate-300">Exit<input type="number" step="0.01" value={tradeDraft.exitPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, exitPrice: e.target.value }))} placeholder="152.00" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+              </div>
+              <label className="block text-sm font-medium text-slate-300">Notes<input value={tradeDraft.notes} onChange={(e) => setTradeDraft((p) => ({ ...p, notes: e.target.value }))} placeholder="Reason, signal, exit conditions" className="mt-1 w-full rounded-xl bg-slate-900/80 border border-slate-700 p-2.5 text-slate-200 outline-none text-sm" /></label>
+              <button type="submit" className="w-full rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500">Add trade</button>
+            </form>
           </div>
         </section>
 
+        {/* ── Performance History ── */}
         <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
           <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
             <div className="flex items-center justify-between gap-4">
