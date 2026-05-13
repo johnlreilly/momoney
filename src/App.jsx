@@ -644,14 +644,20 @@ export default function App() {
     const current = dataRef.current
     const watchList = current?.dailyPlans?.find((p) => p.date === selectedDate)?.watchList || ''
     const symbols = parseWatchSymbols(watchList)
-    if (symbols.length === 0) return
+    if (symbols.length === 0) { setPlanStatus('Scan: no symbols in watch list'); return }
 
+    setPlanStatus(`Scanning ${symbols.join(', ')}...`)
     const updatedMarketData = { ...marketDataRef.current }
     for (const symbol of symbols) {
       try {
-        const response = await fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=5min`)
-        if (response.ok) {
-          updatedMarketData[symbol] = { ...(updatedMarketData[symbol] || {}), intraday: await response.json() }
+        const [intradayRes, quoteRes] = await Promise.all([
+          fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=5min`),
+          fetch(`/api/market?type=quote&symbol=${encodeURIComponent(symbol)}`),
+        ])
+        updatedMarketData[symbol] = {
+          ...(updatedMarketData[symbol] || {}),
+          ...(intradayRes.ok ? { intraday: await intradayRes.json() } : {}),
+          ...(quoteRes.ok ? { quote: await quoteRes.json() } : {}),
         }
       } catch {
         // skip symbol on error
@@ -663,6 +669,7 @@ export default function App() {
     setLiveSignals(signals)
     autoExecuteSignals(signals, phase, updatedMarketData, selectedDate)
     setLastAutoScan(new Date().toISOString())
+    setPlanStatus(`Scan complete — phase: ${phase} — ${signals.length} signal(s) found for ${symbols.join(', ')}`)
   }
 
   // Keep ref current so the interval always calls the latest version without stale closure
