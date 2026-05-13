@@ -615,12 +615,12 @@ export default function App() {
   useEffect(() => { refreshAndScanRef.current = refreshAndScan })
 
   useEffect(() => {
-    const isToday = selectedDate === today
-    const hour = getCurrentHour()
-    const isMarketHours = hour >= 9.5 && hour <= 16
-    if (!isToday || !isMarketHours || !dailyPlan) return
+    if (!dailyPlan || selectedDate !== today) return
+    // Scan immediately so the user doesn't wait up to 5 minutes
+    refreshAndScanRef.current?.()
+    // Then keep scanning every 5 minutes; market-hours guard stays inside the callback
     const intervalId = setInterval(() => {
-      if (getCurrentHour() >= 9.5 && getCurrentHour() <= 16) refreshAndScanRef.current?.()
+      refreshAndScanRef.current?.()
     }, 5 * 60 * 1000)
     return () => clearInterval(intervalId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -945,8 +945,18 @@ export default function App() {
         {/* ── Live Signals ── */}
         <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-5">
           <div className="flex items-center justify-between gap-4">
-            <h2 className="text-base font-semibold text-white">Live signals</h2>
-            <span className="text-xs text-slate-500">{liveSignals.length} active</span>
+            <div>
+              <h2 className="text-base font-semibold text-white">Live signals</h2>
+              {lastAutoScan && <p className="text-xs text-slate-500 mt-0.5">Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={() => refreshAndScanRef.current?.()}
+              disabled={!dailyPlan || marketLoading}
+              className="rounded-xl bg-amber-600/20 border border-amber-600/40 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-600/30 disabled:opacity-40"
+            >
+              Scan now
+            </button>
           </div>
           {liveSignals.length > 0 ? (
             <div className="mt-4 space-y-2">
@@ -988,101 +998,6 @@ export default function App() {
           <p className="text-xs uppercase tracking-widest text-slate-600 text-center pb-4">Setup &amp; tools</p>
         </div>
 
-        {/* ── Morning Plan ── */}
-        <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
-          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
-            <h2 className="text-xl font-semibold text-white">Morning plan</h2>
-            <p className="mt-2 text-slate-400">Answer the research prompt and describe the decision parameters you will monitor today.</p>
-            {!dailyPlan ? (
-              <form onSubmit={submitPlan} className="mt-6 space-y-5">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Research prompt</label>
-                  <textarea readOnly value={DEFAULT_PROMPT} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Your plan</label>
-                  <textarea value={planDraft.response} onChange={(event) => setPlanDraft((prev) => ({ ...prev, response: event.target.value }))} rows={4} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="What are you doing today?" />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-slate-200">Key parameters / watch list</label>
-                  <textarea value={planDraft.watchList} onChange={(event) => setPlanDraft((prev) => ({ ...prev, watchList: event.target.value }))} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="Symbols, sectors, signals, macro cues, time windows..." />
-                </div>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="block text-sm font-medium text-slate-200">
-                    Risk profile
-                    <select value={planDraft.riskProfile} onChange={(event) => setPlanDraft((prev) => ({ ...prev, riskProfile: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none">
-                      <option>Low</option>
-                      <option>Medium</option>
-                      <option>High</option>
-                    </select>
-                  </label>
-                  <label className="block text-sm font-medium text-slate-200">
-                    Notes
-                    <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none" placeholder="Additional discipline, exit conditions, portfolio sizing" />
-                  </label>
-                </div>
-                <div className="flex flex-wrap gap-3">
-                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                    Save morning plan
-                  </button>
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400">
-                    Generate plan from AI
-                  </button>
-                </div>
-                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
-              </form>
-            ) : (
-              <div className="mt-6 space-y-5 rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
-                <div>
-                  <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Morning response</p>
-                  <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.response}</p>
-                </div>
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list — ticker symbols</p>
-                    <span className="text-xs text-slate-500">Edit to add/change symbols for auto-trading</span>
-                  </div>
-                  <textarea
-                    value={dailyPlan.watchList}
-                    onChange={(e) => setData((current) => ({
-                      ...current,
-                      dailyPlans: current.dailyPlans.map((p) =>
-                        p.date === selectedDate ? { ...p, watchList: e.target.value } : p
-                      ),
-                    }))}
-                    rows={2}
-                    placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
-                    className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
-                  />
-                  {planStatus && parseWatchSymbols(dailyPlan.watchList).length === 0 && (
-                    <p className="mt-2 text-xs text-amber-400">{planStatus}</p>
-                  )}
-                </div>
-                <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
-                    Regenerate plan from AI
-                  </button>
-                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
-                    Clear plan
-                  </button>
-                </div>
-                {planInterpretation && <p className="mt-3 text-sm text-slate-300">{planInterpretation}</p>}
-                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="rounded-3xl bg-slate-900/80 p-4">
-                    <p className="text-sm text-slate-400">Risk profile</p>
-                    <p className="mt-2 text-lg font-semibold text-white">{dailyPlan.riskProfile}</p>
-                  </div>
-                  <div className="rounded-3xl bg-slate-900/80 p-4">
-                    <p className="text-sm text-slate-400">Notes</p>
-                    <p className="mt-2 text-lg text-slate-200">{dailyPlan.notes || '—'}</p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </article>
-
-        </section>
 
         {/* ── Market Tools + Manual Trade Entry ── */}
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -1221,6 +1136,102 @@ export default function App() {
               )}
             </div>
           </article>
+        </section>
+
+        {/* ── Morning Plan ── */}
+        <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
+          <article className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+            <h2 className="text-xl font-semibold text-white">Morning plan</h2>
+            <p className="mt-2 text-slate-400">Answer the research prompt and describe the decision parameters you will monitor today.</p>
+            {!dailyPlan ? (
+              <form onSubmit={submitPlan} className="mt-6 space-y-5">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-200">Research prompt</label>
+                  <textarea readOnly value={DEFAULT_PROMPT} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-200">Your plan</label>
+                  <textarea value={planDraft.response} onChange={(event) => setPlanDraft((prev) => ({ ...prev, response: event.target.value }))} rows={4} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="What are you doing today?" />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-slate-200">Key parameters / watch list</label>
+                  <textarea value={planDraft.watchList} onChange={(event) => setPlanDraft((prev) => ({ ...prev, watchList: event.target.value }))} rows={3} className="w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-sm text-slate-200 outline-none" placeholder="Symbols, sectors, signals, macro cues, time windows..." />
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="block text-sm font-medium text-slate-200">
+                    Risk profile
+                    <select value={planDraft.riskProfile} onChange={(event) => setPlanDraft((prev) => ({ ...prev, riskProfile: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none">
+                      <option>Low</option>
+                      <option>Medium</option>
+                      <option>High</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-slate-200">
+                    Notes
+                    <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none" placeholder="Additional discipline, exit conditions, portfolio sizing" />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-3">
+                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                    Save morning plan
+                  </button>
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400">
+                    Generate plan from AI
+                  </button>
+                </div>
+                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
+              </form>
+            ) : (
+              <div className="mt-6 space-y-5 rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
+                <div>
+                  <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Morning response</p>
+                  <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.response}</p>
+                </div>
+                <div>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list — ticker symbols</p>
+                    <span className="text-xs text-slate-500">Edit to add/change symbols for auto-trading</span>
+                  </div>
+                  <textarea
+                    value={dailyPlan.watchList}
+                    onChange={(e) => setData((current) => ({
+                      ...current,
+                      dailyPlans: current.dailyPlans.map((p) =>
+                        p.date === selectedDate ? { ...p, watchList: e.target.value } : p
+                      ),
+                    }))}
+                    rows={2}
+                    placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
+                    className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
+                  />
+                  {planStatus && parseWatchSymbols(dailyPlan.watchList).length === 0 && (
+                    <p className="mt-2 text-xs text-amber-400">{planStatus}</p>
+                  )}
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
+                    Regenerate plan from AI
+                  </button>
+                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
+                    Clear plan
+                  </button>
+                </div>
+                {planInterpretation && <p className="mt-3 text-sm text-slate-300">{planInterpretation}</p>}
+                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-3xl bg-slate-900/80 p-4">
+                    <p className="text-sm text-slate-400">Risk profile</p>
+                    <p className="mt-2 text-lg font-semibold text-white">{dailyPlan.riskProfile}</p>
+                  </div>
+                  <div className="rounded-3xl bg-slate-900/80 p-4">
+                    <p className="text-sm text-slate-400">Notes</p>
+                    <p className="mt-2 text-lg text-slate-200">{dailyPlan.notes || '—'}</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </article>
+
         </section>
       </div>
     </div>
