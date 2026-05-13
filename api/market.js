@@ -1,4 +1,4 @@
-import { fetchQuote, fetchDailySeries, fetchIntradaySeries } from '../src/marketData.js'
+import { fetchQuote, fetchDailySeries, fetchIntradaySeries, fetchTopMovers } from '../src/marketData.js'
 
 const ALPHA_VANTAGE_API_KEY = process.env.ALPHA_VANTAGE_API_KEY
 const ALLOWED_ORIGIN = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'
@@ -46,20 +46,25 @@ export default async function handler(req, res) {
   }
 
   const { type, symbol, interval } = req.query
-  const normalizedSymbol = (symbol || '').toString().trim().toUpperCase().replace(/[^A-Z0-9.]/g, '')
-
-  if (!normalizedSymbol) {
-    res.status(400).json({ error: 'Symbol is required' })
-    return
-  }
-
-  if (normalizedSymbol.length > 10) {
-    res.status(400).json({ error: 'Invalid symbol' })
-    return
-  }
 
   try {
     let result
+    if (type === 'movers') {
+      result = await fetchTopMovers(ALPHA_VANTAGE_API_KEY)
+      res.status(200).json(result)
+      return
+    }
+
+    const normalizedSymbol = (symbol || '').toString().trim().toUpperCase().replace(/[^A-Z0-9.]/g, '')
+    if (!normalizedSymbol) {
+      res.status(400).json({ error: 'Symbol is required' })
+      return
+    }
+    if (normalizedSymbol.length > 10) {
+      res.status(400).json({ error: 'Invalid symbol' })
+      return
+    }
+
     if (type === 'quote') {
       result = await fetchQuote(normalizedSymbol, ALPHA_VANTAGE_API_KEY)
     } else if (type === 'daily') {

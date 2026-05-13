@@ -83,6 +83,25 @@ export async function fetchDailySeries(symbol, apiKey) {
   return normalizeDailySeries(data)
 }
 
+export async function fetchTopMovers(apiKey) {
+  const url = `${ALPHA_VANTAGE_BASE}?function=TOP_GAINERS_LOSERS&apikey=${encodeURIComponent(apiKey)}`
+  const response = await fetch(url)
+  const data = await handleApiErrors('movers', response)
+  if (data.Note) throw new Error('Alpha Vantage rate limit exceeded.')
+  if (data['Error Message'] || data['Information']) throw new Error('Could not fetch market movers.')
+  const normalize = (list) => (list || []).slice(0, 6).map((item) => ({
+    symbol: item.ticker,
+    price: Number(item.price || 0),
+    changePercent: item.change_percentage || '0%',
+    volume: Number(item.volume || 0),
+  }))
+  return {
+    gainers: normalize(data.top_gainers),
+    losers: normalize(data.top_losers),
+    mostActive: normalize(data.most_actively_traded),
+  }
+}
+
 export async function fetchIntradaySeries(symbol, interval = '5min', apiKey) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   if (!normalizedSymbol) {

@@ -297,15 +297,27 @@ export default function App() {
   useEffect(() => {
     if (!dailyPlan || dailyPlan.watchList.trim() || selectedDate !== today) return
     const provider = dataRef.current?.settings?.languageModelProvider || 'gemini'
-    fetch('/api/ai', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        provider,
-        prompt: `Today is ${selectedDate}. Based on the following intraday trading strategy, identify the 3-5 best specific US stock ticker symbols to actively trade today. Pick names that are likely to have high volatility and volume.\n\nStrategy:\n${dailyPlan.response}\n\nReturn ONLY a comma-separated list of ticker symbols, nothing else. Example: NVDA, TSLA, AAPL`,
-      }),
-    })
+    const planText = dailyPlan.response
+
+    // Fetch live movers first, then ask AI to pick symbols from them
+    fetch('/api/market?type=movers')
       .then((r) => (r.ok ? r.json() : null))
+      .then((movers) => {
+        let moversContext = ''
+        if (movers) {
+          const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)}`).join(', ')
+          moversContext = `\n\nLive market movers today:\nGainers: ${fmt(movers.gainers)}\nLosers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
+        }
+        return fetch('/api/ai', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider,
+            prompt: `Today is ${selectedDate}.${moversContext}\n\nBased on the live market data above and the following trading strategy, choose the 3-5 best specific ticker symbols to trade today.\n\nStrategy:\n${planText}\n\nReturn ONLY a comma-separated list of ticker symbols. Example: NVDA, TSLA, AAPL`,
+          }),
+        })
+      })
+      .then((r) => (r?.ok ? r.json() : null))
       .then((result) => {
         const symbols = parseWatchSymbols(result?.text || '')
         if (symbols.length === 0) return
@@ -317,7 +329,7 @@ export default function App() {
         }))
         setPlanStatus(`Watch list auto-populated: ${symbols.join(', ')}`)
       })
-      .catch(() => setPlanStatus(''))
+      .catch(() => {})
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyPlan?.id])
 
@@ -629,10 +641,24 @@ export default function App() {
   async function generateMorningPlanFromAI() {
     const provider = data.settings.languageModelProvider || 'gemini'
     setMarketLoading(true)
-    setPlanStatus('Generating morning plan from AI...')
+    setPlanStatus('Fetching live market movers...')
 
     try {
-      const prompt = `${DEFAULT_PROMPT}\n\nToday is ${selectedDate}. Based on current market conditions, provide a specific trading plan with real ticker symbols.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy for today]\nWatch list: [3-5 specific US stock ticker symbols, comma-separated — e.g. AAPL, NVDA, TSLA]\nNotes: [stop loss levels, position sizing rules, hard exit time]`
+      // Step 1: fetch real pre-market movers to ground the AI prompt in today's data
+      let moversContext = ''
+      try {
+        const moversRes = await fetch('/api/market?type=movers')
+        if (moversRes.ok) {
+          const movers = await moversRes.json()
+          const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
+          moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
+        }
+      } catch {
+        // proceed without movers if fetch fails
+      }
+
+      setPlanStatus('Generating plan from AI...')
+      const prompt = `${DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}. Using the live market data above, identify the best intraday opportunities and provide a specific trading plan.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy based on the specific movers above]\nWatch list: [3-5 specific ticker symbols chosen from the movers above, comma-separated]\nNotes: [key price levels, why each symbol, stop loss at 1.5%, hard exit 3:45 PM]`
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
