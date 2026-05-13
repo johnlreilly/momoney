@@ -891,7 +891,7 @@ export default function App() {
     <div className={t.app}>
       <div className="mx-auto max-w-7xl space-y-6">
         {/* ── Header: glanceable KPI ── */}
-        <header className={`${t.card} p-5 shadow-xl`}>
+        <header className={`${t.card} p-5 shadow-xl sticky top-4 z-10`}>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-baseline gap-3">
               <h1 className={`text-xl font-semibold ${t.heading}`}>momoney</h1>
@@ -1010,8 +1010,9 @@ export default function App() {
             )}
             <div className={`${liveSignals.length > 0 ? `mt-4 pt-4 border-t ${t.divider}` : 'mt-4'}`}>
               {watchMetrics.length > 0 ? (
-                <div className="space-y-3">
+                <div>
                   {liveSignals.length === 0 && <p className={`text-xs ${t.faint} mb-3`}>Watching — no threshold crossed yet</p>}
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-3">
                   {watchMetrics.map((m) => {
                     if (m.noData) {
                       return (
@@ -1052,6 +1053,7 @@ export default function App() {
                       </div>
                     )
                   })}
+                  </div>
                 </div>
               ) : (
                 <p className={`text-sm ${t.faint}`}>
