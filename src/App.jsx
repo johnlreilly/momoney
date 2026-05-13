@@ -1068,7 +1068,7 @@ export default function App() {
           </div>
           <div className={`mt-4 overflow-x-auto rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-white'}`}>
             <table className="min-w-full border-collapse text-left text-sm">
-              <thead className={`${dk ? 'bg-slate-800 text-slate-400' : 'bg-gray-50 text-gray-500'}`}
+              <thead className={`${dk ? 'bg-slate-800 text-slate-400' : 'bg-gray-50 text-gray-500'}`}>
                 <tr>
                   <th className="px-4 py-2.5">Symbol</th>
                   <th className="px-4 py-2.5">Action</th>
