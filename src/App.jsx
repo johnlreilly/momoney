@@ -989,7 +989,7 @@ export default function App() {
                 disabled={!activeSession && !dailyPlan || scanning}
                 className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 ${t.btnScan}`}
               >
-                {scanning ? 'Scanning…' : 'Scan now'}
+                {scanning ? 'Scanning…' : 'Scan Now'}
               </button>
             </div>
             {liveSignals.length > 0 && (
@@ -1084,8 +1084,8 @@ export default function App() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h2 className={`text-base font-semibold ${t.heading}`}>Trades — {displayDate(selectedDate)}</h2>
             <div className="flex gap-2">
-              <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Export day</button>
-              <button type="button" onClick={exportAllCsv} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-200' : 'bg-gray-300 text-gray-700'} px-3 py-1.5 text-xs font-semibold transition hover:opacity-80`}>Export all</button>
+              <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Export Day</button>
+              <button type="button" onClick={exportAllCsv} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-200' : 'bg-gray-300 text-gray-700'} px-3 py-1.5 text-xs font-semibold transition hover:opacity-80`}>Export All</button>
             </div>
           </div>
           <div className={`mt-4 overflow-x-auto rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-white'}`}>
@@ -1161,8 +1161,8 @@ export default function App() {
               </label>
             </div>
             <div className="flex flex-wrap gap-3">
-              <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-50">Fetch quote</button>
-              <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50">Daily history</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-50">Fetch Quote</button>
+              <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50">Daily History</button>
               <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="rounded-2xl bg-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-fuchsia-500 disabled:opacity-50">Intraday</button>
             </div>
             {marketStatus && <p className={`text-xs ${t.muted}`}>{marketStatus}</p>}
@@ -1180,7 +1180,7 @@ export default function App() {
                     <div className={`rounded-xl ${dk ? 'bg-slate-800' : 'bg-white'} p-2`}><p className={t.faint}>Vol</p><p className={t.statValue}>{currentIntraday[0].volume.toLocaleString()}</p></div>
                   </div>
                 )}
-                <button type="button" onClick={fillTradePrices} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Use for trade prices</button>
+                <button type="button" onClick={fillTradePrices} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Use For Trade Prices</button>
               </div>
             )}
           </div>
@@ -1198,7 +1198,7 @@ export default function App() {
                 <label className={`block text-sm font-medium ${t.muted}`}>Exit<input type="number" step="0.01" value={tradeDraft.exitPrice} onChange={(e) => setTradeDraft((p) => ({ ...p, exitPrice: e.target.value }))} placeholder="152.00" className={`mt-1 w-full rounded-xl border p-2.5 outline-none text-sm ${t.input}`} /></label>
               </div>
               <label className={`block text-sm font-medium ${t.muted}`}>Notes<input value={tradeDraft.notes} onChange={(e) => setTradeDraft((p) => ({ ...p, notes: e.target.value }))} placeholder="Reason, signal, exit conditions" className={`mt-1 w-full rounded-xl border p-2.5 outline-none text-sm ${t.input}`} /></label>
-              <button type="submit" className="w-full rounded-xl bg-sky-600 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500">Add trade</button>
+              <button type="submit" className="mt-3 rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500">Add Trade</button>
             </form>
           </div>
         </section>
@@ -1385,9 +1385,9 @@ export default function App() {
                     <input value={planDraft.notes} onChange={(e) => setPlanDraft((p) => ({ ...p, notes: e.target.value }))} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="Key levels, discipline, exit conditions…" />
                   </div>
                   <div className="flex flex-wrap gap-3">
-                    <button type="submit" className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 transition">Save session</button>
-                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Generate from AI</button>
-                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy prompt</button>
+                    <button type="submit" className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 transition">Save Session</button>
+                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Generate From AI</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy Prompt</button>
                   </div>
                   {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
                 </form>
@@ -1422,9 +1422,9 @@ export default function App() {
                     </div>
                   )}
                   <div className="flex flex-wrap gap-3">
-                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Regenerate from AI</button>
-                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy prompt</button>
-                    <button type="button" onClick={() => clearSession(selectedPhase)} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 transition">Clear session</button>
+                    <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Regenerate From AI</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy Prompt</button>
+                    <button type="button" onClick={() => clearSession(selectedPhase)} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 transition">Clear Session</button>
                   </div>
                   {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
                 </div>
