@@ -563,7 +563,7 @@ export default function App() {
       const key = `${signal.symbol}|${signal.type}`
       if (doneKeys.has(key)) continue
       const md = freshMarketData[signal.symbol]
-      if (!md?.quote) continue
+      if (!md?.quote?.price) continue  // skip if price is 0 or missing
 
       const entryPrice = md.quote.price
       const action = signal.type === 'mean-reversion' && signal.value > 50 ? 'Sell' : 'Buy'
@@ -604,7 +604,9 @@ export default function App() {
       finalTrades = finalTrades.map((trade) => {
         if (trade.date !== todayStr || !trade.notes?.startsWith('Auto')) return trade
         const livePrice = freshMarketData[trade.symbol]?.quote?.price
-        return livePrice ? { ...trade, exitPrice: livePrice } : trade
+        // Only use live price if it's real and different from entry — otherwise keep planned exit
+        const usePrice = livePrice > 0 && livePrice !== trade.entryPrice ? livePrice : trade.exitPrice
+        return { ...trade, exitPrice: usePrice }
       })
       const closedCount = finalTrades.filter((t) => t.date === todayStr && t.notes?.startsWith('Auto')).length
       newExecuted.push({ date: todayStr, symbol: '*', type: 'hard-exit', timestamp: now })
@@ -1086,6 +1088,14 @@ export default function App() {
             <div className="flex gap-2">
               <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Export Day</button>
               <button type="button" onClick={exportAllCsv} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-200' : 'bg-gray-300 text-gray-700'} px-3 py-1.5 text-xs font-semibold transition hover:opacity-80`}>Export All</button>
+              <button type="button" onClick={() => {
+                setData((c) => ({
+                  ...c,
+                  trades: c.trades.filter((t) => !(t.date === selectedDate && t.notes?.startsWith('Auto'))),
+                  executedSignals: (c.executedSignals || []).filter((e) => e.date !== selectedDate),
+                  activityLog: (c.activityLog || []).filter((e) => e.date !== selectedDate),
+                }))
+              }} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Reset Auto</button>
             </div>
           </div>
           <div className={`mt-4 overflow-x-auto rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-white'}`}>
