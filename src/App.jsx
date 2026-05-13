@@ -349,9 +349,13 @@ export default function App() {
           }),
         })
       })
-      .then((r) => {
-        setPlanStatus(`DEBUG auto-extract: AI response status=${r?.status}, ok=${r?.ok}`)
-        return r?.ok ? r.json() : null
+      .then(async (r) => {
+        const body = await r?.json().catch(() => null)
+        if (!r?.ok) {
+          setPlanStatus(`DEBUG auto-extract: AI FAILED status=${r?.status} — ${JSON.stringify(body)}`)
+          return null
+        }
+        return body
       })
       .then((result) => {
         const symbols = parseWatchSymbols(result?.text || '')
