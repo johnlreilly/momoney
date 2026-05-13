@@ -234,7 +234,7 @@ export default function App() {
       marketData: loaded.marketData || {},
       executedSignals: loaded.executedSignals || [],
       activityLog: loaded.activityLog || [],
-      settings: { languageModelProvider: loaded.settings?.languageModelProvider || 'openai' },
+      settings: { languageModelProvider: loaded.settings?.languageModelProvider || 'gemini' },
     }
   })
   const [selectedDate, setSelectedDate] = useState(today)
@@ -296,7 +296,7 @@ export default function App() {
   // Auto-extract symbols when a plan exists but has no watch list
   useEffect(() => {
     if (!dailyPlan || dailyPlan.watchList.trim() || selectedDate !== today) return
-    const provider = dataRef.current?.settings?.languageModelProvider || 'openai'
+    const provider = dataRef.current?.settings?.languageModelProvider || 'gemini'
     fetch('/api/ai', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -627,7 +627,7 @@ export default function App() {
   }, [dailyPlan?.id, selectedDate])
 
   async function generateMorningPlanFromAI() {
-    const provider = data.settings.languageModelProvider || 'openai'
+    const provider = data.settings.languageModelProvider || 'gemini'
     setMarketLoading(true)
     setPlanStatus('Generating morning plan from AI...')
 
@@ -1006,9 +1006,9 @@ export default function App() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block text-sm font-medium text-slate-200">
                 AI provider
-                <select value={data.settings.languageModelProvider || 'openai'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
-                  <option value="openai">OpenAI</option>
+                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
                   <option value="gemini">Gemini</option>
+                  <option value="openai">OpenAI</option>
                 </select>
               </label>
               <label className="block text-sm font-medium text-slate-200">

@@ -7,7 +7,7 @@ const initialState = {
   executedSignals: [],
   activityLog: [],
   settings: {
-    languageModelProvider: 'openai',
+    languageModelProvider: 'gemini',
   },
 }
 
