@@ -1,9 +1,25 @@
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const ALLOWED_ORIGIN = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'
+
+const rateLimitMap = new Map()
+const RATE_LIMIT_WINDOW_MS = 60_000
+const RATE_LIMIT_MAX = 10
+
+function isRateLimited(ip) {
+  const now = Date.now()
+  const entry = rateLimitMap.get(ip) || { count: 0, resetAt: now + RATE_LIMIT_WINDOW_MS }
+  if (now > entry.resetAt) {
+    entry.count = 0
+    entry.resetAt = now + RATE_LIMIT_WINDOW_MS
+  }
+  entry.count += 1
+  rateLimitMap.set(ip, entry)
+  return entry.count > RATE_LIMIT_MAX
+}
 
 export default async function handler(req, res) {
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Origin', ALLOWED_ORIGIN)
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
 
@@ -14,6 +30,12 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
+    return
+  }
+
+  const ip = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket?.remoteAddress || 'unknown'
+  if (isRateLimited(ip)) {
+    res.status(429).json({ error: 'Too many requests. Please wait a moment.' })
     return
   }
 

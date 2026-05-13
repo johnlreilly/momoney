@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createId, loadData, saveData } from './storage.js'
 
-const VERSION = '0810fbd'
+const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 const STARTING_CASH = 100000
-const DEFAULT_PROMPT = `You're an investor in the U.S. stock market. You get trades for free and you have $100,000 to start with. You want to maximize returns each day but you want to exit all positions to cash at the end of the day. What are you doing today?`
+const DEFAULT_PROMPT = `You are an intraday equity trader with $100,000 and zero commissions. Your goal is to maximize returns and exit all positions to cash by 4 PM ET.`
 const RISK_VALUES = { Low: 1, Medium: 2, High: 3 }
 
 function formatDate(date) {
@@ -19,9 +19,229 @@ function displayDate(value) {
   })
 }
 
+function calculateRSI(prices, period = 14) {
+  if (prices.length < period + 1) return null
+  let gains = 0
+  let losses = 0
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1]
+    if (change > 0) gains += change
+    else losses += Math.abs(change)
+  }
+  const avgGain = gains / period
+  const avgLoss = losses / period
+  if (avgLoss === 0) return gains > 0 ? 100 : 0
+  const rs = avgGain / avgLoss
+  return 100 - (100 / (1 + rs))
+}
+
+function calculateMA(prices, period) {
+  if (prices.length < period) return null
+  const sum = prices.slice(-period).reduce((a, b) => a + b, 0)
+  return sum / period
+}
+
+function getCurrentHour() {
+  const now = new Date()
+  return now.getHours() + now.getMinutes() / 60
+}
+
+function updateTradingPhase() {
+  const hour = getCurrentHour()
+  if (hour < 9.5) return 'pre-market'
+  if (hour < 10.5) return 'opening-drive'
+  if (hour < 15) return 'midday-fade'
+  if (hour < 15.75) return 'power-hour'
+  return 'after-hours'
+}
+
+function detectGapper(symbol, yesterdayClose, currentPrice) {
+  if (!yesterdayClose || !currentPrice) return 0
+  const gapPercent = Math.abs((currentPrice - yesterdayClose) / yesterdayClose) * 100
+  return gapPercent >= 3 ? gapPercent : 0
+}
+
+function detectORB(intraday, timeWindowMinutes = 15) {
+  if (!intraday || intraday.length === 0) return null
+  // intraday is sorted newest-first; opening bars are the oldest entries for today
+  const todayPrefix = intraday[0].dateTime.slice(0, 10)
+  const todayBars = intraday.filter((d) => d.dateTime.startsWith(todayPrefix)).reverse()
+  if (todayBars.length === 0) return null
+  const openingBars = todayBars.slice(0, Math.ceil(timeWindowMinutes / 5))
+  if (openingBars.length === 0) return null
+  const high = Math.max(...openingBars.map((d) => d.high))
+  const low = Math.min(...openingBars.map((d) => d.low))
+  const latestClose = intraday[0].close
+  const avgOpeningVolume = openingBars.reduce((s, d) => s + d.volume, 0) / openingBars.length
+  const latestVolume = intraday[0].volume
+  const range = high - low
+  return {
+    high, low, range, latestClose,
+    volumeConfirmed: avgOpeningVolume === 0 || latestVolume > avgOpeningVolume * 1.2,
+    breakoutUp: latestClose > high * 0.995,
+    breakoutDown: latestClose < low * 1.005,
+  }
+}
+
+function calculateVWAP(intraday) {
+  if (!intraday || intraday.length === 0) return null
+  const todayPrefix = intraday[0].dateTime.slice(0, 10)
+  const todayBars = intraday.filter((d) => d.dateTime.startsWith(todayPrefix))
+  if (todayBars.length === 0) return null
+  const totalVolume = todayBars.reduce((sum, d) => sum + d.volume, 0)
+  if (totalVolume === 0) return null
+  const tpv = todayBars.reduce((sum, d) => sum + ((d.high + d.low + d.close) / 3) * d.volume, 0)
+  return tpv / totalVolume
+}
+
+function buildSignals(symbols, marketData) {
+  const phase = updateTradingPhase()
+  const signals = []
+
+  for (const symbol of symbols) {
+    const md = marketData[symbol]
+    if (!md?.quote) continue
+    const quote = md.quote
+    const intraday = md.intraday || []
+    const dailySeries = md.dailySeries || []
+
+    if (phase === 'pre-market' && dailySeries.length > 0) {
+      const gapPercent = detectGapper(symbol, dailySeries[0]?.close, quote.price)
+      if (gapPercent > 0) {
+        signals.push({
+          id: createId(), symbol, type: 'gapper', value: gapPercent,
+          message: `${symbol}: ${gapPercent.toFixed(1)}% gap at $${quote.price.toFixed(2)}`,
+          action: 'Watch for entry on pullback after open',
+          timestamp: new Date().toISOString(),
+        })
+      }
+    }
+
+    if (phase === 'opening-drive' && intraday.length > 2) {
+      const orb = detectORB(intraday, 15)
+      if (orb?.breakoutUp) {
+        signals.push({
+          id: createId(), symbol, type: 'orb-breakout', value: orb.range,
+          message: `${symbol}: ORB breakout above $${orb.high.toFixed(2)} — close $${orb.latestClose.toFixed(2)}${orb.volumeConfirmed ? ' ✓ vol' : ' ⚠ low vol'}`,
+          action: orb.volumeConfirmed ? 'BUY — volume confirmed breakout' : 'Watch — breakout lacks volume confirmation',
+          timestamp: new Date().toISOString(),
+        })
+      }
+    }
+
+    if (phase === 'midday-fade' && intraday.length > 14) {
+      const closes = intraday.map((d) => d.close)
+      const rsi = calculateRSI(closes, 14)
+      const ma20 = calculateMA(closes, 20)
+      if (rsi !== null && rsi > 70 && ma20) {
+        signals.push({
+          id: createId(), symbol, type: 'mean-reversion', value: rsi,
+          message: `${symbol}: Overbought RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
+          action: 'SHORT for reversion to MA20',
+          timestamp: new Date().toISOString(),
+        })
+      }
+      if (rsi !== null && rsi < 30 && ma20) {
+        signals.push({
+          id: createId(), symbol, type: 'mean-reversion', value: rsi,
+          message: `${symbol}: Oversold RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
+          action: 'BUY for bounce to MA20',
+          timestamp: new Date().toISOString(),
+        })
+      }
+    }
+
+    if (phase === 'power-hour') {
+      const gain = ((quote.price - quote.previousClose) / quote.previousClose) * 100
+      const vwap = intraday.length > 0 ? calculateVWAP(intraday) : null
+      const aboveVwap = vwap !== null && quote.price > vwap
+      if (gain > 1) {
+        signals.push({
+          id: createId(), symbol, type: 'power-hour', value: gain,
+          message: `${symbol}: +${gain.toFixed(2)}% strength${vwap ? ` | VWAP $${vwap.toFixed(2)} — price ${aboveVwap ? '↑ above' : '↓ below'}` : ''}`,
+          action: aboveVwap ? 'RIDE momentum (above VWAP)' : 'Caution — below VWAP, momentum may fade',
+          timestamp: new Date().toISOString(),
+        })
+      }
+    }
+
+    if (phase === 'after-hours') {
+      signals.push({
+        id: createId(), symbol, type: 'hard-exit', value: 0,
+        message: `${symbol}: SELL-EVERYTHING protocol`,
+        action: 'LIQUIDATE all positions — hard stop 3:45 PM',
+        timestamp: new Date().toISOString(),
+      })
+    }
+  }
+
+  return { signals, phase }
+}
+
+function parseWatchSymbols(text) {
+  return (text || '')
+    .split(/[,;|\s]+/)
+    .map((token) => token.trim().toUpperCase().replace(/[^A-Z0-9.]/g, ''))
+    .filter((token) => token.length > 0 && token.length <= 5)
+}
+
+function parseAiPlanResponse(text) {
+  const normalized = text.replace(/\r/g, '')
+  const planMatch = normalized.match(/Plan\s*[:]\s*([\s\S]*?)(?=(Watch list|Watchlist|Notes|$))/i)
+  const watchMatch = normalized.match(/Watch\s*list\s*[:]\s*([\s\S]*?)(?=(Notes|$))/i)
+  const notesMatch = normalized.match(/Notes\s*[:]\s*([\s\S]*)/i)
+  const plan = planMatch ? planMatch[1].trim() : normalized.trim()
+  const watchList = watchMatch ? watchMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s*,\s*/g, ', ') : ''
+  const notes = notesMatch ? notesMatch[1].trim() : ''
+  return { plan, watchList, notes }
+}
+
+function inferPlanAction(text) {
+  const normalized = (text || '').toLowerCase()
+  if (/(short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)/.test(normalized)) return 'Sell'
+  if (/(buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)/.test(normalized)) return 'Buy'
+  return 'Buy'
+}
+
+function inferSymbolAction(symbol, text) {
+  const ticker = symbol.toLowerCase()
+  const bearish = new RegExp(
+    `(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)`,
+    'i',
+  )
+  const bullish = new RegExp(
+    `(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)`,
+    'i',
+  )
+  const normalized = text || ''
+  if (bearish.test(normalized)) return 'Sell'
+  if (bullish.test(normalized)) return 'Buy'
+  return inferPlanAction(text)
+}
+
+function summarizePlan(plan) {
+  const symbols = parseWatchSymbols(plan.watchList)
+  const bias = inferPlanAction(plan.response || plan.watchList)
+  const signal = /(breakout|momentum|strength|uptrend|rally)/i.test(plan.response)
+    ? 'momentum/breakout focus'
+    : /(dip|pullback|retest|mean reversion|support)/i.test(plan.response)
+    ? 'pullback/support focus'
+    : 'general directional bias'
+  const symbolText = symbols.length ? symbols.join(', ') : 'watch list symbols'
+  return `Interpreted as a ${bias.toLowerCase()} bias for ${symbolText} with a ${signal}.`
+}
+
 export default function App() {
   const today = formatDate(new Date())
-  const [data, setData] = useState({ dailyPlans: [], trades: [], marketData: {}, settings: { languageModelProvider: 'openai' } })
+  const [data, setData] = useState(() => {
+    const loaded = loadData()
+    return {
+      dailyPlans: loaded.dailyPlans || [],
+      trades: loaded.trades || [],
+      marketData: loaded.marketData || {},
+      settings: { languageModelProvider: loaded.settings?.languageModelProvider || 'openai' },
+    }
+  })
   const [selectedDate, setSelectedDate] = useState(today)
   const [planDraft, setPlanDraft] = useState({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
   const [tradeDraft, setTradeDraft] = useState({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
@@ -30,22 +250,18 @@ export default function App() {
   const [marketStatus, setMarketStatus] = useState('')
   const [planStatus, setPlanStatus] = useState('')
   const [marketLoading, setMarketLoading] = useState(false)
-
-  useEffect(() => {
-    const loaded = loadData()
-    setData({
-      dailyPlans: loaded.dailyPlans || [],
-      trades: loaded.trades || [],
-      marketData: loaded.marketData || {},
-      settings: {
-        languageModelProvider: loaded.settings?.languageModelProvider || 'openai',
-      },
-    })
-  }, [])
+  const [liveSignals, setLiveSignals] = useState([])
+  const [tradingPhase, setTradingPhase] = useState(updateTradingPhase)
+  const [lastAutoScan, setLastAutoScan] = useState(null)
+  const marketDataRef = useRef({})
 
   useEffect(() => {
     saveData(data)
   }, [data])
+
+  useEffect(() => {
+    marketDataRef.current = data.marketData
+  }, [data.marketData])
 
   const dailyPlan = useMemo(
     () => data.dailyPlans.find((plan) => plan.date === selectedDate),
@@ -116,6 +332,14 @@ export default function App() {
       ...current,
       trades: current.trades.filter((trade) => trade.id !== tradeId),
     }))
+  }
+
+  function clearDailyPlan() {
+    setData((current) => ({
+      ...current,
+      dailyPlans: current.dailyPlans.filter((plan) => plan.date !== selectedDate),
+    }))
+    setPlanStatus('')
   }
 
   async function fetchMarketQuote() {
@@ -235,56 +459,53 @@ export default function App() {
     setMarketStatus(`Filled trade prices with ${symbol} latest quote.`)
   }
 
-  function parseWatchSymbols(text) {
-    return (text || '')
-      .split(/[,;|\s]+/)
-      .map((token) => token.trim().toUpperCase().replace(/[^A-Z0-9.]/g, ''))
-      .filter((token) => token.length > 0 && token.length <= 5)
+  function scanForSignals() {
+    const symbols = parseWatchSymbols(dailyPlan?.watchList || '')
+    const { signals, phase } = buildSignals(symbols, data.marketData)
+    setTradingPhase(phase)
+    setLiveSignals(signals)
   }
 
-  function parseAiPlanResponse(text) {
-    const normalized = text.replace(/\r/g, '')
-    const planMatch = normalized.match(/Plan\s*[:\-]\s*([\s\S]*?)(?=(Watch list|Watchlist|Notes|$))/i)
-    const watchMatch = normalized.match(/Watch\s*list\s*[:\-]\s*([\s\S]*?)(?=(Notes|$))/i)
-    const notesMatch = normalized.match(/Notes\s*[:\-]\s*([\s\S]*)/i)
-    const plan = planMatch ? planMatch[1].trim() : normalized.trim()
-    const watchList = watchMatch ? watchMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s*,\s*/g, ', ') : ''
-    const notes = notesMatch ? notesMatch[1].trim() : ''
-    return { plan, watchList, notes }
+  async function refreshAndScan() {
+    const symbols = parseWatchSymbols(dailyPlan?.watchList || '')
+    if (symbols.length === 0) return
+    const updatedMarketData = { ...marketDataRef.current }
+    for (const symbol of symbols) {
+      try {
+        const response = await fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=5min`)
+        if (response.ok) {
+          updatedMarketData[symbol] = { ...(updatedMarketData[symbol] || {}), intraday: await response.json() }
+        }
+      } catch {
+        // skip symbol on error
+      }
+    }
+    setData((current) => ({ ...current, marketData: updatedMarketData }))
+    const { signals, phase } = buildSignals(symbols, updatedMarketData)
+    setTradingPhase(phase)
+    setLiveSignals(signals)
+    setLastAutoScan(new Date().toISOString())
   }
 
-  function inferPlanAction(text) {
-    const normalized = (text || '').toLowerCase()
-    if (/(short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)/.test(normalized)) {
-      return 'Sell'
-    }
-    if (/(buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)/.test(normalized)) {
-      return 'Buy'
-    }
-    return 'Buy'
-  }
-
-  function inferSymbolAction(symbol, text) {
-    const normalized = (text || '').toLowerCase()
-    const ticker = symbol.toLowerCase()
-    if (new RegExp(`(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)`, 'i').test(normalized)) {
-      return 'Sell'
-    }
-    if (new RegExp(`(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)`, 'i').test(normalized)) {
-      return 'Buy'
-    }
-    return inferPlanAction(text)
-  }
+  useEffect(() => {
+    const isToday = selectedDate === today
+    const hour = getCurrentHour()
+    const isMarketHours = hour >= 9.5 && hour <= 16
+    if (!isToday || !isMarketHours || !dailyPlan) return
+    const intervalId = setInterval(() => {
+      if (getCurrentHour() >= 9.5 && getCurrentHour() <= 16) refreshAndScan()
+    }, 5 * 60 * 1000)
+    return () => clearInterval(intervalId)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyPlan?.id, selectedDate])
 
   async function generateMorningPlanFromAI() {
     const provider = data.settings.languageModelProvider || 'openai'
     setMarketLoading(true)
     setPlanStatus('Generating morning plan from AI...')
-    console.log(`[${VERSION}] Starting AI plan generation with provider: ${provider}`)
 
     try {
-      const prompt = `${DEFAULT_PROMPT}\n\nPlease provide a concise plan and watch list. Format your reply like:\nPlan: ...\nWatch list: ...\nNotes: ...`
-      console.log(`[${VERSION}] Calling /api/ai endpoint`)
+      const prompt = `${DEFAULT_PROMPT}\n\nToday is ${selectedDate}. Based on current market conditions, provide a specific trading plan with real ticker symbols.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy for today]\nWatch list: [3-5 specific US stock ticker symbols, comma-separated — e.g. AAPL, NVDA, TSLA]\nNotes: [stop loss levels, position sizing rules, hard exit time]`
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
@@ -295,22 +516,17 @@ export default function App() {
           prompt,
         }),
       })
-      console.log(`[${VERSION}] Response status: ${response.status}`)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
-        console.error(`[${VERSION}] API error:`, errorData)
         throw new Error(errorData?.error || 'AI plan generation failed.')
       }
 
       const result = await response.json()
-      console.log(`[${VERSION}] API response received:`, result)
       const aiText = result?.text?.trim() || ''
       if (!aiText) {
-        console.error(`[${VERSION}] Empty AI response`)
         throw new Error('AI returned an empty response.')
       }
-      console.log(`[${VERSION}] AI text generated (${aiText.length} chars)`)
 
       const parsed = parseAiPlanResponse(aiText)
       const plan = {
@@ -330,33 +546,16 @@ export default function App() {
       }))
       setPlanStatus('Morning plan generated and saved from AI.')
     } catch (error) {
-      console.error(`[${VERSION}] Error generating plan:`, error)
       setPlanStatus(error.message || 'Could not generate a plan from AI.')
     } finally {
       setMarketLoading(false)
     }
   }
 
-  function summarizePlan(plan) {
-    const symbols = parseWatchSymbols(plan.watchList)
-    const bias = inferPlanAction(plan.response || plan.watchList)
-    const signal = /(breakout|momentum|strength|uptrend|rally)/i.test(plan.response)
-      ? 'momentum/breakout focus'
-      : /(dip|pullback|retest|mean reversion|support)/i.test(plan.response)
-      ? 'pullback/support focus'
-      : 'general directional bias'
-    const symbolText = symbols.length ? symbols.join(', ') : 'watch list symbols'
-    return `Interpreted as a ${bias.toLowerCase()} bias for ${symbolText} with a ${signal}.`
-  }
-
   function estimateQuantity(price) {
-    if (!price || price <= 0) {
-      return 10
-    }
-    if (price > 250) {
-      return Math.max(1, Math.min(100, Math.floor(STARTING_CASH / price / 10)))
-    }
-    return Math.max(1, Math.min(300, Math.floor(1000 / price)))
+    if (!price || price <= 0) return 10
+    // Four equal $25K blocks per the plan strategy
+    return Math.max(1, Math.floor((STARTING_CASH / 4) / price))
   }
 
   function calculateExitPrice(entryPrice, action, intraday) {
@@ -394,8 +593,10 @@ export default function App() {
     setPlanStatus('Interpreting plan and generating hypothetical trades...')
     const trades = []
     const cachedMarketData = { ...data.marketData }
+    const alreadyTradedToday = new Set(data.trades.filter((t) => t.date === selectedDate).map((t) => t.symbol))
 
     for (const symbol of symbols) {
+      if (alreadyTradedToday.has(symbol)) continue
       const action = inferSymbolAction(symbol, dailyPlan.response || dailyPlan.watchList)
       try {
         if (!cachedMarketData[symbol]?.quote) {
@@ -410,8 +611,7 @@ export default function App() {
             quote,
           }
         }
-      } catch (error) {
-        // skip symbols that cannot be fetched
+      } catch {
         continue
       }
 
@@ -433,7 +633,7 @@ export default function App() {
             ...symbolMarket,
             intraday,
           }
-        } catch (error) {
+        } catch {
           intraday = []
         }
       }
@@ -564,7 +764,6 @@ export default function App() {
   const currentQuote = currentMarketData?.quote
   const currentSeries = currentMarketData?.dailySeries || []
   const currentIntraday = currentMarketData?.intraday || []
-  const tradeSymbolData = data.marketData[tradeDraft.symbol.trim().toUpperCase()] || null
   const todaysMetrics = computeMetrics(selectedDate)
 
   return (
@@ -584,13 +783,6 @@ export default function App() {
               <div className="rounded-3xl bg-slate-800/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
                 Current day: <span className="font-semibold text-white">{displayDate(selectedDate)}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => console.log('Debug info:', { version: VERSION, provider: data.settings.languageModelProvider, timestamp: new Date().toISOString() })}
-                className="text-xs text-slate-500 hover:text-slate-300 transition"
-              >
-                Show debug (check console)
-              </button>
             </div>
           </div>
         </header>
@@ -635,6 +827,7 @@ export default function App() {
                     Generate plan from AI
                   </button>
                 </div>
+                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
               </form>
             ) : (
               <div className="mt-6 space-y-5 rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
@@ -652,6 +845,12 @@ export default function App() {
                   </button>
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
                     Regenerate plan from AI
+                  </button>
+                  <button type="button" onClick={scanForSignals} disabled={marketLoading || !dailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-500 disabled:bg-slate-700">
+                    Scan for trading signals
+                  </button>
+                  <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
+                    Clear plan
                   </button>
                   <span className="text-sm text-slate-400">Use your OpenAI API key to create or refresh the morning plan automatically.</span>
                 </div>
@@ -698,6 +897,78 @@ export default function App() {
               <input type="date" value={selectedDate} onChange={(event) => setSelectedDate(event.target.value)} className="mt-3 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
             </div>
           </aside>
+        </section>
+
+        {/* Live Trading Interpreter */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Live trading interpreter</h2>
+              <p className="mt-2 text-slate-400">Real-time signal detection based on market phase and technical patterns.</p>
+            </div>
+            <div className="text-right text-xs text-slate-500 shrink-0">
+              {lastAutoScan
+                ? <span>Auto-scanned {new Date(lastAutoScan).toLocaleTimeString()}</span>
+                : selectedDate === today && dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                  ? <span className="text-amber-500">Auto-scan active — runs every 5 min during market hours</span>
+                  : null}
+            </div>
+          </div>
+
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            <div className="rounded-3xl bg-slate-950/80 p-4">
+              <p className="text-sm text-slate-400">Current Phase</p>
+              <p className="mt-2 text-lg font-semibold capitalize text-white">{tradingPhase.replace(/-/g, ' ')}</p>
+              <p className="mt-1 text-xs text-slate-500">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+            </div>
+            <div className="rounded-3xl bg-slate-950/80 p-4">
+              <p className="text-sm text-slate-400">Active Signals</p>
+              <p className="mt-2 text-lg font-semibold text-amber-400">{liveSignals.length}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length === 0
+                  ? 'Add ticker symbols to the watch list to enable scanning'
+                  : 'detected in watch list'}
+              </p>
+            </div>
+          </div>
+
+          {liveSignals.length > 0 && (
+            <div className="mt-6 space-y-3">
+              <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Signal alerts</p>
+              {liveSignals.map((signal) => (
+                <div key={signal.id} className={`rounded-2xl p-4 border ${
+                  signal.type === 'gapper' ? 'border-green-800/50 bg-green-950/30' :
+                  signal.type === 'orb-breakout' ? 'border-blue-800/50 bg-blue-950/30' :
+                  signal.type === 'mean-reversion' ? 'border-orange-800/50 bg-orange-950/30' :
+                  signal.type === 'power-hour' ? 'border-cyan-800/50 bg-cyan-950/30' :
+                  'border-red-800/50 bg-red-950/30'
+                }`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <p className="font-semibold text-white">{signal.message}</p>
+                      <p className="mt-1 text-sm text-slate-300">{signal.action}</p>
+                      <p className="mt-1 text-xs text-slate-500">{new Date(signal.timestamp).toLocaleTimeString()}</p>
+                    </div>
+                    <span className={`ml-3 inline-block rounded-full px-3 py-1 text-xs font-medium ${
+                      signal.type === 'gapper' ? 'bg-green-500/20 text-green-300' :
+                      signal.type === 'orb-breakout' ? 'bg-blue-500/20 text-blue-300' :
+                      signal.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
+                      signal.type === 'power-hour' ? 'bg-cyan-500/20 text-cyan-300' :
+                      'bg-red-500/20 text-red-300'
+                    }`}>
+                      {signal.type.replace('-', ' ')}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {liveSignals.length === 0 && (
+            <div className="mt-6 rounded-3xl border border-slate-700/50 bg-slate-800/30 p-6 text-center">
+              <p className="text-slate-400">No signals detected yet. Click "Scan for signals" to analyze the market.</p>
+            </div>
+          )}
         </section>
 
         <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
@@ -828,7 +1099,7 @@ export default function App() {
                         <p className="mt-2 text-lg font-semibold text-white">{currentIntraday[0].dateTime}</p>
                       </div>
                     </div>
-                    <div className="grid gap-3 sm:grid-cols-3">
+                    <div className="grid gap-3 sm:grid-cols-4">
                       <div className="rounded-2xl bg-slate-900/80 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">High</p>
                         <p className="mt-2 text-lg font-semibold text-white">${Math.max(...currentIntraday.map((point) => point.high)).toFixed(2)}</p>
@@ -836,6 +1107,10 @@ export default function App() {
                       <div className="rounded-2xl bg-slate-900/80 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Low</p>
                         <p className="mt-2 text-lg font-semibold text-white">${Math.min(...currentIntraday.map((point) => point.low)).toFixed(2)}</p>
+                      </div>
+                      <div className="rounded-2xl bg-slate-900/80 p-3">
+                        <p className="text-xs uppercase tracking-[0.18em] text-slate-500">VWAP</p>
+                        <p className="mt-2 text-lg font-semibold text-cyan-300">${(calculateVWAP(currentIntraday) ?? 0).toFixed(2)}</p>
                       </div>
                       <div className="rounded-2xl bg-slate-900/80 p-3">
                         <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Latest volume</p>
@@ -999,9 +1274,12 @@ export default function App() {
                 <p className="text-slate-400">Add a plan and trades to begin tracking daily performance.</p>
               ) : (
                 <div className="space-y-3">
-                  {history.slice(0, 7).map((date) => {
-                    const metrics = computeMetrics(date)
-                    const barWidth = Math.min(100, Math.max(8, Math.abs(metrics.totalPL) / 20))
+                  {(() => {
+                    const recent = history.slice(0, 7)
+                    const allMetrics = recent.map((date) => ({ date, metrics: computeMetrics(date) }))
+                    const maxPL = Math.max(1, ...allMetrics.map(({ metrics }) => Math.abs(metrics.totalPL)))
+                    return allMetrics.map(({ date, metrics }) => {
+                    const barWidth = Math.max(4, (Math.abs(metrics.totalPL) / maxPL) * 100)
                     return (
                       <div key={date} className="space-y-2">
                         <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
@@ -1013,7 +1291,8 @@ export default function App() {
                         </div>
                       </div>
                     )
-                  })}
+                  })
+                  })()}
                 </div>
               )}
             </div>

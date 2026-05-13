@@ -1,5 +1,4 @@
 const ALPHA_VANTAGE_BASE = 'https://www.alphavantage.co/query'
-const DEFAULT_API_KEY = 'demo'
 
 function normalizeQuote(data) {
   const quote = data['Global Quote'] || {}
@@ -37,7 +36,7 @@ function handleApiErrors(symbol, response) {
   return response.json()
 }
 
-export async function fetchQuote(symbol, apiKey = DEFAULT_API_KEY) {
+export async function fetchQuote(symbol, apiKey) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   if (!normalizedSymbol) {
     throw new Error('Symbol is required')
@@ -67,7 +66,7 @@ function normalizeIntradaySeries(data, interval) {
   })).sort((a, b) => (a.dateTime < b.dateTime ? 1 : -1))
 }
 
-export async function fetchDailySeries(symbol, apiKey = DEFAULT_API_KEY) {
+export async function fetchDailySeries(symbol, apiKey) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   if (!normalizedSymbol) {
     throw new Error('Symbol is required')
@@ -84,7 +83,7 @@ export async function fetchDailySeries(symbol, apiKey = DEFAULT_API_KEY) {
   return normalizeDailySeries(data)
 }
 
-export async function fetchIntradaySeries(symbol, interval = '5min', apiKey = DEFAULT_API_KEY) {
+export async function fetchIntradaySeries(symbol, interval = '5min', apiKey) {
   const normalizedSymbol = symbol.trim().toUpperCase()
   if (!normalizedSymbol) {
     throw new Error('Symbol is required')
