@@ -908,7 +908,7 @@ export default function App() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <div className={`rounded-xl px-3 py-1.5 text-sm font-semibold ${todaysMetrics.totalPL >= 0 ? `bg-emerald-500/15 ${t.plGain}` : `bg-rose-500/15 ${t.plLoss}`}`}>
-              {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
+              {((todaysMetrics.totalPL / STARTING_CASH) * 100).toFixed(2)}% &nbsp;{todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
             </div>
             <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
               {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
