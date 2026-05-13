@@ -989,23 +989,23 @@ export default function App() {
               <h1 className={`text-xl font-semibold ${t.heading}`}>momoney</h1>
               <span className={`text-xs ${t.faint}`}>v{VERSION}</span>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
-              <div className={`rounded-2xl px-4 py-2 text-lg font-bold ${todaysMetrics.totalPL >= 0 ? `bg-emerald-500/15 ${t.plGain}` : `bg-rose-500/15 ${t.plLoss}`}`}>
+            <div className="flex flex-wrap items-center gap-2">
+              <div className={`rounded-xl px-3 py-1.5 text-sm font-semibold ${todaysMetrics.totalPL >= 0 ? `bg-emerald-500/15 ${t.plGain}` : `bg-rose-500/15 ${t.plLoss}`}`}>
                 {todaysMetrics.totalPL >= 0 ? '+' : ''}{todaysMetrics.totalPL.toFixed(2)}
               </div>
-              <div className={`rounded-2xl ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'} px-4 py-2 text-sm`}>
+              <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
                 {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
               </div>
-              <div className={`rounded-2xl ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'} px-4 py-2 text-sm capitalize`}>
+              <div className={`rounded-xl px-3 py-1.5 text-sm capitalize ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
                 {tradingPhase.replace(/-/g, ' ')}
               </div>
               {lastAutoScan && (
-                <div className={`rounded-2xl ${dk ? 'bg-slate-800 text-slate-400' : 'bg-gray-200 text-gray-500'} px-4 py-2 text-xs`}>
-                  scanned {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
+                  {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
               )}
-              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={`rounded-2xl ${t.input} border px-3 py-2 text-sm outline-none`} />
-              <button type="button" onClick={toggleTheme} className={`rounded-2xl ${dk ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-2 text-sm transition`}>
+              <input type="date" value={selectedDate} onChange={(e) => setSelectedDate(e.target.value)} className={`rounded-xl ${t.input} border px-3 py-1.5 text-sm outline-none`} />
+              <button type="button" onClick={toggleTheme} className={`rounded-xl px-3 py-1.5 text-sm transition ${dk ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
                 {dk ? '☀ Light' : '☾ Dark'}
               </button>
             </div>
