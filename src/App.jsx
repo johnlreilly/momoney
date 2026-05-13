@@ -653,12 +653,17 @@ export default function App() {
         ])
         const intraday = intradayRes.ok ? await intradayRes.json() : null
         const quote = quoteRes.ok ? await quoteRes.json() : null
+        // Only overwrite stored data when the new fetch actually has content.
+        // Alpha Vantage returns HTTP 200 with {"Note":"..."} when rate-limited,
+        // which parses to [] / price:0 — keep last good data in that case.
+        const freshIntraday = intraday?.length > 0 ? intraday : null
+        const freshQuote = quote?.price > 0 ? quote : null
         updatedMarketData[symbol] = {
           ...(updatedMarketData[symbol] || {}),
-          ...(intraday ? { intraday } : {}),
-          ...(quote ? { quote } : {}),
+          ...(freshIntraday ? { intraday: freshIntraday, intradayAt: new Date().toISOString() } : {}),
+          ...(freshQuote   ? { quote:    freshQuote,    quoteAt:    new Date().toISOString() } : {}),
         }
-        fetchResults[symbol] = { intraday: !!intraday, quote: !!quote }
+        fetchResults[symbol] = { freshIntraday: !!freshIntraday, freshQuote: !!freshQuote }
       } catch (err) {
         fetchResults[symbol] = { error: err?.message || 'fetch failed' }
       }
@@ -666,11 +671,12 @@ export default function App() {
 
     const fetchSummary = symbols.map((s) => {
       const r = fetchResults[s] || {}
-      if (r.error) return `${s}:error`
+      if (r.error) return `${s}: error`
       const md = updatedMarketData[s]
       const price = md?.quote?.price || 0
       const bars = md?.intraday?.length || 0
-      return `${s}: $${price.toFixed(2)} ${bars}bars`
+      const fresh = r.freshIntraday || r.freshQuote
+      return `${s}: $${price > 0 ? price.toFixed(2) : '—'} ${bars}bars${fresh ? '' : ' (cached)'}`
     }).join(' | ')
 
     const { signals, phase } = buildSignals(symbols, updatedMarketData)
@@ -686,35 +692,39 @@ export default function App() {
       const prevClose = md?.quote?.previousClose || 0
       const intradayBars = md?.intraday?.length || 0
 
+      const stale = !fetchResults[symbol]?.freshIntraday && !fetchResults[symbol]?.freshQuote
+      const dataAt = md?.quoteAt || md?.intradayAt
+      const staleLabel = stale && dataAt ? `cached ${new Date(dataAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : null
+
       if (phase === 'pre-market' && price > 0 && md.dailySeries?.length > 0) {
         const raw = ((price - md.dailySeries[0].close) / md.dailySeries[0].close) * 100
-        metrics.push({ symbol, label: 'Gap', value: raw, min: -10, max: 10, lowThreshold: -3, highThreshold: 3, unit: '%' })
+        metrics.push({ symbol, label: 'Gap', value: raw, min: -10, max: 10, lowThreshold: -3, highThreshold: 3, unit: '%', staleLabel })
       } else if (phase === 'opening-drive' && intradayBars > 0 && price > 0) {
         const orb = detectORB(md.intraday, 15)
         if (orb) {
           const distPct = ((price - orb.high) / orb.high) * 100
-          metrics.push({ symbol, label: 'vs ORB High', value: distPct, min: -5, max: 5, lowThreshold: -0.5, highThreshold: 0, unit: '%' })
+          metrics.push({ symbol, label: 'vs ORB High', value: distPct, min: -5, max: 5, lowThreshold: -0.5, highThreshold: 0, unit: '%', staleLabel })
         } else {
-          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0 })
+          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0, staleLabel })
         }
       } else if (phase === 'midday-fade' && intradayBars >= 15) {
         const closes = md.intraday.map((d) => d.close)
         const rsi = calculateRSI(closes, 14)
         if (rsi !== null) {
-          metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '' })
+          metrics.push({ symbol, label: 'RSI', value: rsi, min: 0, max: 100, lowThreshold: 30, highThreshold: 70, unit: '', staleLabel })
         } else {
-          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0 })
+          metrics.push({ symbol, label: 'Day gain', value: prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', noData: price === 0, staleLabel })
         }
       } else if (phase === 'power-hour' && price > 0 && prevClose > 0) {
-        metrics.push({ symbol, label: 'Day gain', value: ((price - prevClose) / prevClose) * 100, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+        metrics.push({ symbol, label: 'Day gain', value: ((price - prevClose) / prevClose) * 100, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%', staleLabel })
       } else {
-        // Always show something — day gain if possible, otherwise a placeholder
         metrics.push({
           symbol,
-          label: price > 0 && prevClose > 0 ? 'Day gain' : 'Awaiting data',
+          label: price > 0 && prevClose > 0 ? 'Day gain' : 'No data',
           value: price > 0 && prevClose > 0 ? ((price - prevClose) / prevClose) * 100 : 0,
           min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: price > 0 && prevClose > 0 ? '%' : '',
           noData: !(price > 0 && prevClose > 0),
+          staleLabel,
         })
       }
     }
@@ -1016,9 +1026,9 @@ export default function App() {
                   {watchMetrics.map((m) => {
                     if (m.noData) {
                       return (
-                        <div key={m.symbol} className="flex items-center justify-between text-xs">
+                        <div key={m.symbol} className="flex items-center justify-between text-xs py-1">
                           <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
-                          <span className={t.faint}>Awaiting data…</span>
+                          <span className={t.faint}>No data — try again later</span>
                         </div>
                       )
                     }
@@ -1031,7 +1041,7 @@ export default function App() {
                         <div className="flex justify-between text-xs">
                           <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
                           <span className={hot ? `font-bold ${dk ? 'text-blue-400' : 'text-blue-600'}` : t.muted}>
-                            {m.label}: {m.value.toFixed(1)}{m.unit}{hot ? ' ↑' : ''}
+                            {m.label}: {m.value.toFixed(1)}{m.unit}{hot ? ' ↑' : ''}{m.staleLabel ? <span className={`ml-1 ${t.faint} font-normal`}>({m.staleLabel})</span> : null}
                           </span>
                         </div>
                         <div className="relative h-2.5 rounded-full overflow-visible" style={{ background: dk ? '#1e293b' : '#e5e7eb' }}>
