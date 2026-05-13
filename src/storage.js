@@ -4,6 +4,8 @@ const initialState = {
   dailyPlans: [],
   trades: [],
   marketData: {},
+  executedSignals: [],
+  activityLog: [],
   settings: {
     languageModelProvider: 'openai',
   },
@@ -17,6 +19,8 @@ export function loadData() {
     return {
       ...initialState,
       ...parsed,
+      executedSignals: parsed.executedSignals || [],
+      activityLog: parsed.activityLog || [],
       settings: {
         ...initialState.settings,
         ...(parsed.settings || {}),

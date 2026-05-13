@@ -203,21 +203,6 @@ function inferPlanAction(text) {
   return 'Buy'
 }
 
-function inferSymbolAction(symbol, text) {
-  const ticker = symbol.toLowerCase()
-  const bearish = new RegExp(
-    `(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)`,
-    'i',
-  )
-  const bullish = new RegExp(
-    `(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)`,
-    'i',
-  )
-  const normalized = text || ''
-  if (bearish.test(normalized)) return 'Sell'
-  if (bullish.test(normalized)) return 'Buy'
-  return inferPlanAction(text)
-}
 
 function summarizePlan(plan) {
   const symbols = parseWatchSymbols(plan.watchList)
@@ -239,6 +224,8 @@ export default function App() {
       dailyPlans: loaded.dailyPlans || [],
       trades: loaded.trades || [],
       marketData: loaded.marketData || {},
+      executedSignals: loaded.executedSignals || [],
+      activityLog: loaded.activityLog || [],
       settings: { languageModelProvider: loaded.settings?.languageModelProvider || 'openai' },
     }
   })
@@ -253,15 +240,18 @@ export default function App() {
   const [liveSignals, setLiveSignals] = useState([])
   const [tradingPhase, setTradingPhase] = useState(updateTradingPhase)
   const [lastAutoScan, setLastAutoScan] = useState(null)
+  const dataRef = useRef(null)
   const marketDataRef = useRef({})
+  const refreshAndScanRef = useRef(null)
 
   useEffect(() => {
     saveData(data)
   }, [data])
 
   useEffect(() => {
+    dataRef.current = data
     marketDataRef.current = data.marketData
-  }, [data.marketData])
+  }, [data])
 
   const dailyPlan = useMemo(
     () => data.dailyPlans.find((plan) => plan.date === selectedDate),
@@ -466,9 +456,102 @@ export default function App() {
     setLiveSignals(signals)
   }
 
+  function autoExecuteSignals(signals, phase, freshMarketData, todayStr) {
+    const current = dataRef.current
+    if (!current) return
+
+    const doneKeys = new Set(
+      (current.executedSignals || [])
+        .filter((es) => es.date === todayStr)
+        .map((es) => `${es.symbol}|${es.type}`),
+    )
+
+    const newTrades = []
+    const newExecuted = []
+    const newLog = []
+    const now = new Date().toISOString()
+    const planRisk = (current.dailyPlans || []).find((p) => p.date === todayStr)?.riskProfile || 'Medium'
+
+    for (const signal of signals) {
+      if (signal.type === 'hard-exit') continue
+      const key = `${signal.symbol}|${signal.type}`
+      if (doneKeys.has(key)) continue
+      const md = freshMarketData[signal.symbol]
+      if (!md?.quote) continue
+
+      const entryPrice = md.quote.price
+      const action = signal.type === 'mean-reversion' && signal.value > 50 ? 'Sell' : 'Buy'
+      const exitPrice = action === 'Buy' ? entryPrice * 1.015 : entryPrice * 0.985
+      const quantity = Math.max(1, Math.floor((STARTING_CASH / 4) / entryPrice))
+
+      const trade = {
+        id: createId(),
+        date: todayStr,
+        symbol: signal.symbol,
+        action,
+        quantity,
+        entryPrice,
+        exitPrice,
+        riskRating: planRisk,
+        notes: `Auto [${signal.type}]: ${signal.message}`,
+        createdAt: now,
+      }
+      newTrades.push(trade)
+      newExecuted.push({ date: todayStr, symbol: signal.symbol, type: signal.type, timestamp: now })
+      newLog.push({
+        id: createId(),
+        date: todayStr,
+        timestamp: now,
+        type: signal.type,
+        symbol: signal.symbol,
+        message: `${signal.symbol} — ${action} ${quantity} shares @ $${entryPrice.toFixed(2)}`,
+        detail: signal.action,
+      })
+    }
+
+    // Hard exit: update all today's auto trades' exit prices to current market price
+    const alreadyHardExited = (current.executedSignals || []).some(
+      (es) => es.date === todayStr && es.type === 'hard-exit',
+    )
+    let finalTrades = [...current.trades, ...newTrades]
+    if (phase === 'after-hours' && !alreadyHardExited) {
+      finalTrades = finalTrades.map((trade) => {
+        if (trade.date !== todayStr || !trade.notes?.startsWith('Auto')) return trade
+        const livePrice = freshMarketData[trade.symbol]?.quote?.price
+        return livePrice ? { ...trade, exitPrice: livePrice } : trade
+      })
+      const closedCount = finalTrades.filter((t) => t.date === todayStr && t.notes?.startsWith('Auto')).length
+      newExecuted.push({ date: todayStr, symbol: '*', type: 'hard-exit', timestamp: now })
+      if (closedCount > 0) {
+        newLog.push({
+          id: createId(),
+          date: todayStr,
+          timestamp: now,
+          type: 'hard-exit',
+          symbol: '*',
+          message: `HARD EXIT — ${closedCount} position${closedCount !== 1 ? 's' : ''} closed at market price`,
+          detail: 'Sell-everything protocol executed at 3:45 PM',
+        })
+      }
+    }
+
+    if (newTrades.length === 0 && newExecuted.length === 0) return
+
+    setData((prev) => ({
+      ...prev,
+      marketData: freshMarketData,
+      trades: finalTrades,
+      executedSignals: [...(prev.executedSignals || []), ...newExecuted],
+      activityLog: [...(prev.activityLog || []).slice(-200), ...newLog],
+    }))
+  }
+
   async function refreshAndScan() {
-    const symbols = parseWatchSymbols(dailyPlan?.watchList || '')
+    const current = dataRef.current
+    const watchList = current?.dailyPlans?.find((p) => p.date === selectedDate)?.watchList || ''
+    const symbols = parseWatchSymbols(watchList)
     if (symbols.length === 0) return
+
     const updatedMarketData = { ...marketDataRef.current }
     for (const symbol of symbols) {
       try {
@@ -480,12 +563,16 @@ export default function App() {
         // skip symbol on error
       }
     }
-    setData((current) => ({ ...current, marketData: updatedMarketData }))
+
     const { signals, phase } = buildSignals(symbols, updatedMarketData)
     setTradingPhase(phase)
     setLiveSignals(signals)
+    autoExecuteSignals(signals, phase, updatedMarketData, selectedDate)
     setLastAutoScan(new Date().toISOString())
   }
+
+  // Keep ref current so the interval always calls the latest version without stale closure
+  useEffect(() => { refreshAndScanRef.current = refreshAndScan })
 
   useEffect(() => {
     const isToday = selectedDate === today
@@ -493,7 +580,7 @@ export default function App() {
     const isMarketHours = hour >= 9.5 && hour <= 16
     if (!isToday || !isMarketHours || !dailyPlan) return
     const intervalId = setInterval(() => {
-      if (getCurrentHour() >= 9.5 && getCurrentHour() <= 16) refreshAndScan()
+      if (getCurrentHour() >= 9.5 && getCurrentHour() <= 16) refreshAndScanRef.current?.()
     }, 5 * 60 * 1000)
     return () => clearInterval(intervalId)
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -552,118 +639,8 @@ export default function App() {
     }
   }
 
-  function estimateQuantity(price) {
-    if (!price || price <= 0) return 10
-    // Four equal $25K blocks per the plan strategy
-    return Math.max(1, Math.floor((STARTING_CASH / 4) / price))
-  }
 
-  function calculateExitPrice(entryPrice, action, intraday) {
-    if (!entryPrice) return entryPrice
-    const latest = intraday?.[0]?.close ?? entryPrice
-    if (action === 'Buy') {
-      const target = latest * 1.015
-      if (intraday?.length > 1) {
-        const high = Math.max(...intraday.map((point) => point.high))
-        return Math.max(target, high || target)
-      }
-      return target
-    }
-    const target = latest * 0.985
-    if (intraday?.length > 1) {
-      const low = Math.min(...intraday.map((point) => point.low))
-      return Math.min(target, low || target)
-    }
-    return target
-  }
 
-  async function followMorningAdvice() {
-    if (!dailyPlan) {
-      setPlanStatus('Save a morning plan first.')
-      return
-    }
-
-    const symbols = parseWatchSymbols(dailyPlan.watchList)
-    if (symbols.length === 0) {
-      setPlanStatus('Add one or more ticker symbols to the watch list first.')
-      return
-    }
-
-    setMarketLoading(true)
-    setPlanStatus('Interpreting plan and generating hypothetical trades...')
-    const trades = []
-    const cachedMarketData = { ...data.marketData }
-    const alreadyTradedToday = new Set(data.trades.filter((t) => t.date === selectedDate).map((t) => t.symbol))
-
-    for (const symbol of symbols) {
-      if (alreadyTradedToday.has(symbol)) continue
-      const action = inferSymbolAction(symbol, dailyPlan.response || dailyPlan.watchList)
-      try {
-        if (!cachedMarketData[symbol]?.quote) {
-          const response = await fetch(`/api/market?type=quote&symbol=${encodeURIComponent(symbol)}`)
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => null)
-            throw new Error(errorData?.error || `Could not fetch quote for ${symbol}`)
-          }
-          const quote = await response.json()
-          cachedMarketData[symbol] = {
-            ...(cachedMarketData[symbol] || {}),
-            quote,
-          }
-        }
-      } catch {
-        continue
-      }
-
-      const symbolMarket = cachedMarketData[symbol]
-      if (!symbolMarket?.quote) {
-        continue
-      }
-
-      let intraday = symbolMarket.intraday
-      if (!intraday || intraday.length === 0) {
-        try {
-          const response = await fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(intradayInterval)}`)
-          if (!response.ok) {
-            const errorData = await response.json().catch(() => null)
-            throw new Error(errorData?.error || `Could not fetch intraday data for ${symbol}`)
-          }
-          intraday = await response.json()
-          cachedMarketData[symbol] = {
-            ...symbolMarket,
-            intraday,
-          }
-        } catch {
-          intraday = []
-        }
-      }
-
-      const entryPrice = symbolMarket.quote.price
-      const exitPrice = calculateExitPrice(entryPrice, action, intraday)
-      trades.push({
-        id: createId(),
-        date: selectedDate,
-        symbol,
-        action,
-        quantity: estimateQuantity(entryPrice),
-        entryPrice,
-        exitPrice,
-        riskRating: dailyPlan.riskProfile || 'Medium',
-        notes: `Auto-generated from plan: ${dailyPlan.response.slice(0, 120)}`,
-        createdAt: new Date().toISOString(),
-      })
-    }
-
-    setData((current) => ({
-      ...current,
-      marketData: cachedMarketData,
-      trades: [...current.trades, ...trades],
-    }))
-    setMarketStatus('')
-    setPlanStatus(`Generated ${trades.length} trades from the morning plan.`)
-    setMarketSymbol(symbols[0] || marketSymbol)
-    setMarketLoading(false)
-  }
 
   function computeTradePL(trade) {
     const direction = trade.action === 'Sell' ? -1 : 1
@@ -836,23 +813,36 @@ export default function App() {
                   <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.response}</p>
                 </div>
                 <div>
-                  <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list / parameters</p>
-                  <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.watchList || 'No watch list set.'}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list — ticker symbols</p>
+                    <span className="text-xs text-slate-500">Edit to add/change symbols for auto-trading</span>
+                  </div>
+                  <textarea
+                    value={dailyPlan.watchList}
+                    onChange={(e) => setData((current) => ({
+                      ...current,
+                      dailyPlans: current.dailyPlans.map((p) =>
+                        p.date === selectedDate ? { ...p, watchList: e.target.value } : p
+                      ),
+                    }))}
+                    rows={2}
+                    placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
+                    className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
+                  />
+                  {parseWatchSymbols(dailyPlan.watchList).length === 0 && (
+                    <p className="mt-2 text-xs text-amber-500">Add ticker symbols above — the app needs them to monitor the market and auto-execute trades.</p>
+                  )}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" onClick={followMorningAdvice} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-400 disabled:bg-slate-700">
-                    Generate trades from plan
-                  </button>
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
                     Regenerate plan from AI
                   </button>
                   <button type="button" onClick={scanForSignals} disabled={marketLoading || !dailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-amber-500 disabled:bg-slate-700">
-                    Scan for trading signals
+                    Scan now
                   </button>
                   <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
                     Clear plan
                   </button>
-                  <span className="text-sm text-slate-400">Use your OpenAI API key to create or refresh the morning plan automatically.</span>
                 </div>
                 {planInterpretation && <p className="mt-3 text-sm text-slate-300">{planInterpretation}</p>}
                 {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
@@ -966,16 +956,63 @@ export default function App() {
 
           {liveSignals.length === 0 && (
             <div className="mt-6 rounded-3xl border border-slate-700/50 bg-slate-800/30 p-6 text-center">
-              <p className="text-slate-400">No signals detected yet. Click "Scan for signals" to analyze the market.</p>
+              <p className="text-slate-400">
+                {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
+                  ? 'Waiting for market signals. Auto-scan runs every 5 min during market hours.'
+                  : 'Add ticker symbols to the watch list above to begin monitoring.'}
+              </p>
             </div>
           )}
         </section>
+
+        {/* Activity Log */}
+        {(() => {
+          const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate).slice().reverse()
+          if (todayLog.length === 0) return null
+          return (
+            <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h2 className="text-xl font-semibold text-white">Activity log</h2>
+                  <p className="mt-1 text-slate-400 text-sm">Auto-executed trades and signals for {displayDate(selectedDate)}.</p>
+                </div>
+                <span className="text-xs text-slate-500">{todayLog.length} event{todayLog.length !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="mt-5 space-y-2 max-h-72 overflow-y-auto">
+                {todayLog.map((entry) => (
+                  <div key={entry.id} className={`flex items-start gap-3 rounded-2xl p-3 ${
+                    entry.type === 'hard-exit' ? 'bg-red-950/40 border border-red-800/40' :
+                    entry.type === 'orb-breakout' ? 'bg-blue-950/30 border border-blue-800/30' :
+                    entry.type === 'gapper' ? 'bg-green-950/30 border border-green-800/30' :
+                    entry.type === 'mean-reversion' ? 'bg-orange-950/30 border border-orange-800/30' :
+                    entry.type === 'power-hour' ? 'bg-cyan-950/30 border border-cyan-800/30' :
+                    'bg-slate-800/40 border border-slate-700/40'
+                  }`}>
+                    <span className="mt-0.5 shrink-0 text-xs text-slate-500">{new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white">{entry.message}</p>
+                      {entry.detail && <p className="mt-0.5 text-xs text-slate-400">{entry.detail}</p>}
+                    </div>
+                    <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${
+                      entry.type === 'hard-exit' ? 'bg-red-500/20 text-red-300' :
+                      entry.type === 'orb-breakout' ? 'bg-blue-500/20 text-blue-300' :
+                      entry.type === 'gapper' ? 'bg-green-500/20 text-green-300' :
+                      entry.type === 'mean-reversion' ? 'bg-orange-500/20 text-orange-300' :
+                      entry.type === 'power-hour' ? 'bg-cyan-500/20 text-cyan-300' :
+                      'bg-slate-500/20 text-slate-300'
+                    }`}>{entry.type?.replace(/-/g, ' ')}</span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )
+        })()}
 
         <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-xl font-semibold text-white">Trade journal</h2>
-              <p className="mt-2 text-slate-400">Record every hypothetical order and track the realized P/L, risk, and execution details.</p>
+              <p className="mt-2 text-slate-400">Auto-executed trades appear here throughout the day. You can also add trades manually below.</p>
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
               <div className="rounded-3xl bg-slate-950/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
@@ -1197,9 +1234,15 @@ export default function App() {
                 ) : (
                   dailyTrades.map((trade) => {
                     const pl = computeTradePL(trade)
+                    const isAuto = trade.notes?.startsWith('Auto')
                     return (
-                      <tr key={trade.id} className="border-t border-slate-800">
-                        <td className="px-4 py-3 text-slate-100">{trade.symbol}</td>
+                      <tr key={trade.id} className={`border-t border-slate-800 ${isAuto ? 'bg-slate-900/40' : ''}`}>
+                        <td className="px-4 py-3 text-slate-100">
+                          <div className="flex items-center gap-2">
+                            {trade.symbol}
+                            {isAuto && <span className="rounded-full bg-indigo-500/20 px-2 py-0.5 text-xs font-medium text-indigo-300">auto</span>}
+                          </div>
+                        </td>
                         <td className="px-4 py-3 text-slate-100">{trade.action}</td>
                         <td className="px-4 py-3 text-slate-100">{trade.quantity}</td>
                         <td className="px-4 py-3 text-slate-100">${trade.entryPrice.toFixed(2)}</td>
