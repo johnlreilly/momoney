@@ -1091,11 +1091,9 @@ export default function App() {
               <button type="button" onClick={() => {
                 setData((c) => ({
                   ...c,
-                  trades: c.trades.filter((t) => !(t.date === selectedDate && t.notes?.startsWith('Auto'))),
                   executedSignals: (c.executedSignals || []).filter((e) => e.date !== selectedDate),
-                  activityLog: (c.activityLog || []).filter((e) => e.date !== selectedDate),
                 }))
-              }} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Reset Auto</button>
+              }} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Reset Signals</button>
             </div>
           </div>
           <div className={`mt-4 overflow-x-auto rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-white'}`}>
