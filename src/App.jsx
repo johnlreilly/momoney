@@ -288,6 +288,7 @@ export default function App() {
     const loaded = loadData()
     return {
       dailyPlans: loaded.dailyPlans || [],
+      dailySessions: loaded.dailySessions || [],
       trades: loaded.trades || [],
       marketData: loaded.marketData || {},
       executedSignals: loaded.executedSignals || [],
@@ -703,10 +704,14 @@ export default function App() {
         metrics.push({ symbol, label: 'Day gain', value: gain, min: -3, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
         pushed = true
       }
-      // Fallback: always show day gain from quote if primary metric unavailable
-      if (!pushed && md.quote?.previousClose) {
-        const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
-        metrics.push({ symbol, label: 'Day gain', value: gain, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+      // Fallback: day gain % if previousClose available, otherwise current price as a placeholder
+      if (!pushed) {
+        if (md.quote?.price > 0 && md.quote?.previousClose > 0) {
+          const gain = ((md.quote.price - md.quote.previousClose) / md.quote.previousClose) * 100
+          metrics.push({ symbol, label: 'Day gain', value: gain, min: -5, max: 5, lowThreshold: -1, highThreshold: 1, unit: '%' })
+        } else if (md.quote?.price > 0) {
+          metrics.push({ symbol, label: 'Price', value: md.quote.price, min: 0, max: md.quote.price * 2, lowThreshold: md.quote.price * 0.99, highThreshold: md.quote.price * 1.01, unit: '' })
+        }
       }
     }
     setWatchMetrics(metrics)
