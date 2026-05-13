@@ -55,6 +55,14 @@ function updateTradingPhase() {
   return 'after-hours'
 }
 
+const PHASE_SCHEDULE = [
+  { phase: 'pre-market',    signalType: 'gapper',         startHour: 8.0,   endHour: 9.5,   label: 'Pre-Market Scan',  window: '8:00 – 9:30 AM',   description: 'Scan for gappers (3%+ move on high relative volume) and earnings reactions' },
+  { phase: 'opening-drive', signalType: 'orb-breakout',   startHour: 9.5,   endHour: 10.5,  label: 'Opening Drive',    window: '9:30 – 10:30 AM',  description: 'ORB breakouts — enter on 15-min high break with volume confirmation. Four $25K blocks.' },
+  { phase: 'midday-fade',   signalType: 'mean-reversion', startHour: 10.5,  endHour: 15.0,  label: 'Mid-Day Fade',     window: '10:30 AM – 3:00 PM', description: 'Mean reversion — RSI overbought (>70) short to MA20, oversold (<30) buy to MA20' },
+  { phase: 'power-hour',    signalType: 'power-hour',     startHour: 15.0,  endHour: 15.75, label: 'Power Hour',       window: '3:00 – 3:45 PM',   description: 'Ride VWAP momentum on relative strength leaders. Begin position reduction.' },
+  { phase: 'after-hours',   signalType: 'hard-exit',      startHour: 15.75, endHour: 16.0,  label: 'Hard Exit',        window: '3:45 PM',          description: 'SELL EVERYTHING — all positions to cash before 3:59 PM. No exceptions.' },
+]
+
 function detectGapper(symbol, yesterdayClose, currentPrice) {
   if (!yesterdayClose || !currentPrice) return 0
   const gapPercent = Math.abs((currentPrice - yesterdayClose) / yesterdayClose) * 100
@@ -274,6 +282,44 @@ export default function App() {
       .reverse()
     return dates.slice(0, 14)
   }, [data.dailyPlans, data.trades])
+
+  const pendingDecisions = useMemo(() => {
+    const todayLog = (data.activityLog || []).filter((e) => e.date === selectedDate)
+    const currentPhaseIndex = PHASE_SCHEDULE.findIndex((p) => p.phase === tradingPhase)
+    return PHASE_SCHEDULE.map((phase, i) => ({
+      ...phase,
+      status: i < currentPhaseIndex ? 'completed' : i === currentPhaseIndex ? 'active' : 'pending',
+      events: todayLog.filter((e) => e.type === phase.signalType),
+    }))
+  }, [data.activityLog, selectedDate, tradingPhase])
+
+  // Auto-extract symbols when a plan exists but has no watch list
+  useEffect(() => {
+    if (!dailyPlan || dailyPlan.watchList.trim() || selectedDate !== today) return
+    const provider = dataRef.current?.settings?.languageModelProvider || 'openai'
+    fetch('/api/ai', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        provider,
+        prompt: `Today is ${selectedDate}. Based on the following intraday trading strategy, identify the 3-5 best specific US stock ticker symbols to actively trade today. Pick names that are likely to have high volatility and volume.\n\nStrategy:\n${dailyPlan.response}\n\nReturn ONLY a comma-separated list of ticker symbols, nothing else. Example: NVDA, TSLA, AAPL`,
+      }),
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((result) => {
+        const symbols = parseWatchSymbols(result?.text || '')
+        if (symbols.length === 0) return
+        setData((current) => ({
+          ...current,
+          dailyPlans: current.dailyPlans.map((p) =>
+            p.id === dailyPlan.id ? { ...p, watchList: symbols.join(', ') } : p,
+          ),
+        }))
+        setPlanStatus(`Watch list auto-populated: ${symbols.join(', ')}`)
+      })
+      .catch(() => setPlanStatus(''))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dailyPlan?.id])
 
   function submitPlan(event) {
     event.preventDefault()
@@ -829,8 +875,8 @@ export default function App() {
                     placeholder="AAPL, NVDA, TSLA — add symbols here to enable auto-trading"
                     className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-sm text-slate-100 outline-none"
                   />
-                  {parseWatchSymbols(dailyPlan.watchList).length === 0 && (
-                    <p className="mt-2 text-xs text-amber-500">Add ticker symbols above — the app needs them to monitor the market and auto-execute trades.</p>
+                  {planStatus && parseWatchSymbols(dailyPlan.watchList).length === 0 && (
+                    <p className="mt-2 text-xs text-amber-400">{planStatus}</p>
                   )}
                 </div>
                 <div className="mt-4 flex flex-wrap gap-3">
@@ -889,6 +935,68 @@ export default function App() {
           </aside>
         </section>
 
+        {/* Pending Decisions */}
+        <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-semibold text-white">Pending decisions</h2>
+              <p className="mt-1 text-sm text-slate-400">Today's trading schedule — the app auto-executes each phase as market hours progress.</p>
+            </div>
+            <span className="shrink-0 rounded-full bg-slate-800 px-3 py-1 text-xs text-slate-400">
+              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET
+            </span>
+          </div>
+          <div className="mt-5 space-y-3">
+            {pendingDecisions.map((decision) => (
+              <div key={decision.phase} className={`rounded-2xl border p-4 transition ${
+                decision.status === 'active'
+                  ? 'border-amber-600/50 bg-amber-950/20'
+                  : decision.status === 'completed'
+                  ? 'border-slate-700/40 bg-slate-900/30 opacity-60'
+                  : 'border-slate-700/50 bg-slate-900/50'
+              }`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs text-slate-500 font-mono">{decision.window}</span>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                        decision.status === 'active'    ? 'bg-amber-500/20 text-amber-300' :
+                        decision.status === 'completed' ? 'bg-slate-600/40 text-slate-400' :
+                                                          'bg-slate-700/40 text-slate-400'
+                      }`}>
+                        {decision.status === 'active' ? 'Active now' : decision.status === 'completed' ? 'Done' : 'Pending'}
+                      </span>
+                      {decision.events.length > 0 && (
+                        <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-medium text-emerald-300">
+                          {decision.events.length} trade{decision.events.length !== 1 ? 's' : ''} executed
+                        </span>
+                      )}
+                    </div>
+                    <p className={`mt-1 font-semibold ${decision.status === 'active' ? 'text-white' : 'text-slate-300'}`}>
+                      {decision.label}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{decision.description}</p>
+                    {decision.events.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {decision.events.map((e) => (
+                          <span key={e.id} className="rounded-lg bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                            {e.message}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className={`shrink-0 w-2 h-2 rounded-full mt-2 ${
+                    decision.status === 'active'    ? 'bg-amber-400 animate-pulse' :
+                    decision.status === 'completed' ? 'bg-emerald-500' :
+                                                      'bg-slate-600'
+                  }`} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* Live Trading Interpreter */}
         <section className="rounded-3xl border border-slate-800 bg-slate-900/90 p-6">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
@@ -914,11 +1022,7 @@ export default function App() {
             <div className="rounded-3xl bg-slate-950/80 p-4">
               <p className="text-sm text-slate-400">Active Signals</p>
               <p className="mt-2 text-lg font-semibold text-amber-400">{liveSignals.length}</p>
-              <p className="mt-1 text-xs text-slate-500">
-                {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length === 0
-                  ? 'Add ticker symbols to the watch list to enable scanning'
-                  : 'detected in watch list'}
-              </p>
+              <p className="mt-1 text-xs text-slate-500">detected this scan</p>
             </div>
           </div>
 
@@ -958,8 +1062,8 @@ export default function App() {
             <div className="mt-6 rounded-3xl border border-slate-700/50 bg-slate-800/30 p-6 text-center">
               <p className="text-slate-400">
                 {dailyPlan && parseWatchSymbols(dailyPlan.watchList).length > 0
-                  ? 'Waiting for market signals. Auto-scan runs every 5 min during market hours.'
-                  : 'Add ticker symbols to the watch list above to begin monitoring.'}
+                  ? 'Waiting for signals. Auto-scan runs every 5 min during market hours.'
+                  : 'Symbols are being identified — scan will begin automatically.'}
               </p>
             </div>
           )}
