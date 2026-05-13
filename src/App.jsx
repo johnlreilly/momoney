@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createId, loadData, saveData } from './storage.js'
 
+const VERSION = '0810fbd'
 const STARTING_CASH = 100000
 const DEFAULT_PROMPT = `You're an investor in the U.S. stock market. You get trades for free and you have $100,000 to start with. You want to maximize returns each day but you want to exit all positions to cash at the end of the day. What are you doing today?`
 const RISK_VALUES = { Low: 1, Medium: 2, High: 3 }
@@ -279,9 +280,11 @@ export default function App() {
     const provider = data.settings.languageModelProvider || 'openai'
     setMarketLoading(true)
     setPlanStatus('Generating morning plan from AI...')
+    console.log(`[${VERSION}] Starting AI plan generation with provider: ${provider}`)
 
     try {
       const prompt = `${DEFAULT_PROMPT}\n\nPlease provide a concise plan and watch list. Format your reply like:\nPlan: ...\nWatch list: ...\nNotes: ...`
+      console.log(`[${VERSION}] Calling /api/ai endpoint`)
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
@@ -292,17 +295,22 @@ export default function App() {
           prompt,
         }),
       })
+      console.log(`[${VERSION}] Response status: ${response.status}`)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
+        console.error(`[${VERSION}] API error:`, errorData)
         throw new Error(errorData?.error || 'AI plan generation failed.')
       }
 
       const result = await response.json()
+      console.log(`[${VERSION}] API response received:`, result)
       const aiText = result?.text?.trim() || ''
       if (!aiText) {
+        console.error(`[${VERSION}] Empty AI response`)
         throw new Error('AI returned an empty response.')
       }
+      console.log(`[${VERSION}] AI text generated (${aiText.length} chars)`)
 
       const parsed = parseAiPlanResponse(aiText)
       const plan = {
@@ -322,6 +330,7 @@ export default function App() {
       }))
       setPlanStatus('Morning plan generated and saved from AI.')
     } catch (error) {
+      console.error(`[${VERSION}] Error generating plan:`, error)
       setPlanStatus(error.message || 'Could not generate a plan from AI.')
     } finally {
       setMarketLoading(false)
@@ -569,9 +578,19 @@ export default function App() {
               <p className="mt-2 max-w-2xl text-slate-400">
                 Log your morning market strategy, capture all hypothetical trades, and measure whether the day followed your plan.
               </p>
+              <p className="mt-1 text-xs text-slate-500">Version: {VERSION}</p>
             </div>
-            <div className="rounded-3xl bg-slate-800/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
-              Current day: <span className="font-semibold text-white">{displayDate(selectedDate)}</span>
+            <div className="space-y-2">
+              <div className="rounded-3xl bg-slate-800/80 px-4 py-3 text-sm text-slate-300 ring-1 ring-slate-700">
+                Current day: <span className="font-semibold text-white">{displayDate(selectedDate)}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => console.log('Debug info:', { version: VERSION, provider: data.settings.languageModelProvider, timestamp: new Date().toISOString() })}
+                className="text-xs text-slate-500 hover:text-slate-300 transition"
+              >
+                Show debug (check console)
+              </button>
             </div>
           </div>
         </header>
