@@ -638,27 +638,43 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dailyPlan?.id, selectedDate])
 
+  async function buildEnrichedPrompt() {
+    let moversContext = ''
+    try {
+      const moversRes = await fetch('/api/market?type=movers')
+      if (moversRes.ok) {
+        const movers = await moversRes.json()
+        const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
+        moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
+      }
+    } catch {
+      // proceed without movers if fetch fails
+    }
+    return `${DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}. Using the live market data above, identify the best intraday opportunities and provide a specific trading plan.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy based on the specific movers above]\nWatch list: [3-5 specific ticker symbols chosen from the movers above, comma-separated]\nNotes: [key price levels, why each symbol, stop loss at 1.5%, hard exit 3:45 PM]`
+  }
+
+  async function copyEnrichedPrompt() {
+    setMarketLoading(true)
+    setPlanStatus('Fetching live data...')
+    try {
+      const prompt = await buildEnrichedPrompt()
+      await navigator.clipboard.writeText(prompt)
+      setPlanStatus('Prompt copied — paste it into Gemini, then paste the response into the plan field below.')
+    } catch {
+      setPlanStatus('Could not copy to clipboard.')
+    } finally {
+      setMarketLoading(false)
+    }
+  }
+
   async function generateMorningPlanFromAI() {
     const provider = data.settings.languageModelProvider || 'gemini'
     setMarketLoading(true)
     setPlanStatus('Fetching live market movers...')
 
     try {
-      // Step 1: fetch real pre-market movers to ground the AI prompt in today's data
-      let moversContext = ''
-      try {
-        const moversRes = await fetch('/api/market?type=movers')
-        if (moversRes.ok) {
-          const movers = await moversRes.json()
-          const fmt = (list) => list.map((s) => `${s.symbol} ${s.changePercent} @ $${s.price.toFixed(2)} vol ${(s.volume / 1e6).toFixed(1)}M`).join(', ')
-          moversContext = `\n\nLIVE MARKET DATA for ${selectedDate}:\nTop gainers: ${fmt(movers.gainers)}\nTop losers: ${fmt(movers.losers)}\nMost active: ${fmt(movers.mostActive)}`
-        }
-      } catch {
-        // proceed without movers if fetch fails
-      }
-
       setPlanStatus('Generating plan from AI...')
-      const prompt = `${DEFAULT_PROMPT}${moversContext}\n\nToday is ${selectedDate}. Using the live market data above, identify the best intraday opportunities and provide a specific trading plan.\n\nFormat your reply EXACTLY as follows — no other sections:\nPlan: [2-3 sentence strategy based on the specific movers above]\nWatch list: [3-5 specific ticker symbols chosen from the movers above, comma-separated]\nNotes: [key price levels, why each symbol, stop loss at 1.5%, hard exit 3:45 PM]`
+      const prompt = await buildEnrichedPrompt()
       const response = await fetch('/api/ai', {
         method: 'POST',
         headers: {
@@ -1201,8 +1217,11 @@ export default function App() {
                   <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
                     Save morning plan
                   </button>
-                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400">
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
                     Generate plan from AI
+                  </button>
+                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-slate-700 px-5 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50">
+                    Copy prompt
                   </button>
                 </div>
                 {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
@@ -1237,6 +1256,9 @@ export default function App() {
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
                     Regenerate plan from AI
+                  </button>
+                  <button type="button" onClick={copyEnrichedPrompt} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-slate-600 disabled:opacity-50">
+                    Copy prompt
                   </button>
                   <button type="button" onClick={clearDailyPlan} className="inline-flex items-center justify-center rounded-2xl bg-rose-700 px-4 py-3 text-sm font-semibold text-slate-100 transition hover:bg-rose-600">
                     Clear plan
