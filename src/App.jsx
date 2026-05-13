@@ -1015,7 +1015,7 @@ export default function App() {
         {/* ── Pending Decisions ── */}
         <section className={`${t.card} p-5`}>
           <div className="flex items-center justify-between gap-4">
-            <h2 className={`text-base font-semibold ${t.heading}`}>Pending decisions</h2>
+            <h2 className={`text-base font-semibold ${t.heading}`}>Pending Decisions</h2>
             <span className={`shrink-0 text-xs ${t.faint}`}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-5">
@@ -1051,7 +1051,7 @@ export default function App() {
             return (
               <section className={`${t.card} p-5`}>
                 <div className="flex items-center justify-between gap-4">
-                  <h2 className={`text-base font-semibold ${t.heading}`}>Activity log</h2>
+                  <h2 className={`text-base font-semibold ${t.heading}`}>Activity Log</h2>
                   <span className={`text-xs ${t.faint}`}>{todayLog.length} event{todayLog.length !== 1 ? 's' : ''} today</span>
                 </div>
                 <div className="mt-4 space-y-2 max-h-64 overflow-y-auto">
@@ -1090,7 +1090,7 @@ export default function App() {
           <section className={`${t.card} p-5`}>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className={`text-base font-semibold ${t.heading}`}>Live signals</h2>
+                <h2 className={`text-base font-semibold ${t.heading}`}>Live Signals</h2>
                 {lastAutoScan && <p className={`text-xs ${t.faint} mt-0.5`}>Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
               </div>
               <button
@@ -1248,7 +1248,7 @@ export default function App() {
         {/* ── Market Tools + Manual Trade Entry ── */}
         <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
           <div className={`${t.card} p-6 space-y-4`}>
-            <h2 className={`text-base font-semibold ${t.heading}`}>Market data</h2>
+            <h2 className={`text-base font-semibold ${t.heading}`}>Market Data</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <label className={`block text-sm font-medium ${t.body}`}>
                 AI provider
@@ -1288,7 +1288,7 @@ export default function App() {
           </div>
 
           <div className={`${t.card} p-6`}>
-            <h2 className={`text-base font-semibold ${t.heading} mb-4`}>Add trade</h2>
+            <h2 className={`text-base font-semibold ${t.heading} mb-4`}>Add Trade</h2>
             <form onSubmit={submitTrade} className="space-y-3">
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className={`block text-sm font-medium ${t.muted}`}>Symbol<input value={tradeDraft.symbol} onChange={(e) => setTradeDraft((p) => ({ ...p, symbol: e.target.value }))} placeholder="AAPL" className={`mt-1 w-full rounded-xl border p-2.5 outline-none text-sm ${t.input}`} /></label>
@@ -1310,7 +1310,7 @@ export default function App() {
           <article className={`${t.card} p-6`}>
             <div className="flex items-center justify-between gap-4">
               <div>
-                <h2 className={`text-xl font-semibold ${t.heading}`}>Performance history</h2>
+                <h2 className={`text-xl font-semibold ${t.heading}`}>Performance History</h2>
                 <p className={`mt-2 ${t.muted}`}>Review recent daily outcomes and compare the plan to actual P/L.</p>
               </div>
             </div>
@@ -1352,7 +1352,7 @@ export default function App() {
           </article>
 
           <article className={`${t.card} p-6`}>
-            <h2 className={`text-xl font-semibold ${t.heading}`}>P/L graph</h2>
+            <h2 className={`text-xl font-semibold ${t.heading}`}>P/L Graph</h2>
             <p className={`mt-2 ${t.muted}`}>Daily profit and loss trend for your latest recorded days.</p>
             <div className="mt-6 space-y-3">
               {history.length === 0 ? (
@@ -1387,7 +1387,7 @@ export default function App() {
         {/* ── Current Plan ── */}
         <section className="grid gap-6 xl:grid-cols-[1.4fr_1fr]">
           <article className={`${t.card} p-6`}>
-            <h2 className={`text-xl font-semibold ${t.heading}`}>Current plan</h2>
+            <h2 className={`text-xl font-semibold ${t.heading}`}>Current Plan</h2>
             <p className={`mt-2 ${t.muted}`}>Answer the research prompt and describe the decision parameters you will monitor today.</p>
             {!dailyPlan ? (
               <form onSubmit={submitPlan} className="mt-6 space-y-5">
