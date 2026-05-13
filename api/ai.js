@@ -1,7 +1,17 @@
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-pro'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
 
 export default async function handler(req, res) {
+  // Set CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*')
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS')
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type')
+
+  if (req.method === 'OPTIONS') {
+    res.status(200).end()
+    return
+  }
+
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method not allowed' })
     return
@@ -24,35 +34,36 @@ export default async function handler(req, res) {
         return
       }
 
-      const response = await fetch(`https://gemini.googleapis.com/v1/models/${GEMINI_MODEL}:generateMessage?key=${encodeURIComponent(apiKey)}`, {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          messages: [
+          contents: [
             {
-              author: 'user',
-              content: [
+              parts: [
                 {
-                  type: 'text',
                   text: prompt,
                 },
               ],
             },
           ],
-          temperature: 0.7,
+          generationConfig: {
+            temperature: 0.7,
+            maxOutputTokens: 400,
+          },
         }),
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => null)
-        throw new Error(errorData?.error || 'Gemini request failed')
+        throw new Error(errorData?.error?.message || 'Gemini request failed')
       }
 
       const data = await response.json()
       const candidate = data?.candidates?.[0]
-      const outputText = candidate?.content?.find((item) => item.type === 'output_text')?.text || candidate?.content?.[0]?.text || ''
+      const outputText = candidate?.content?.parts?.[0]?.text || ''
       res.status(200).json({ text: outputText || '' })
       return
     }
