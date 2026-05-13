@@ -1015,7 +1015,7 @@ export default function App() {
                 {scanning ? 'Scanning…' : 'Scan now'}
               </button>
             </div>
-            {liveSignals.length > 0 ? (
+            {liveSignals.length > 0 && (
               <div className="mt-4 space-y-2">
                 {liveSignals.map((signal) => (
                   <div key={signal.id} className={`rounded-xl p-3 border ${
@@ -1041,53 +1041,52 @@ export default function App() {
                   </div>
                 ))}
               </div>
-            ) : (
-              <div className="mt-4">
-                {watchMetrics.length > 0 ? (
-                  <div className="space-y-4">
-                    <p className={`text-xs ${t.faint}`}>Watching — no threshold crossed yet</p>
-                    {watchMetrics.map((m) => {
-                      const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
-                      const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
-                      const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
-                      const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
-                      return (
-                        <div key={m.symbol} className="space-y-1">
-                          <div className="flex justify-between text-xs">
-                            <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
-                            <span className={hot ? `font-bold ${dk ? 'text-blue-400' : 'text-blue-600'}` : t.muted}>
-                              {m.label}: {m.value.toFixed(1)}{m.unit}{hot ? ' ↑' : ''}
-                            </span>
-                          </div>
-                          <div className="relative h-2.5 rounded-full overflow-visible" style={{ background: dk ? '#1e293b' : '#e5e7eb' }}>
-                            <div className="absolute left-0 top-0 h-full rounded-l-full bg-emerald-500/25" style={{ width: `${lowPct}%` }} />
-                            <div className="absolute top-0 h-full rounded-r-full bg-red-500/25" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
-                            <div className="absolute top-0 w-0.5 h-full bg-emerald-500/60" style={{ left: `${lowPct}%` }} />
-                            <div className="absolute top-0 w-0.5 h-full bg-red-500/60" style={{ left: `${highPct}%` }} />
-                            <div
-                              className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-sm transition-all ${hot ? 'bg-blue-500' : dk ? 'bg-slate-400' : 'bg-gray-400'}`}
-                              style={{ left: `${pct}%` }}
-                            />
-                          </div>
-                          <div className={`flex justify-between text-xs ${t.faint}`}>
-                            <span>{m.min}{m.unit}</span>
-                            <span className="text-emerald-600">{m.lowThreshold}{m.unit}</span>
-                            <span className="text-red-500">{m.highThreshold}{m.unit}</span>
-                            <span>{m.max}{m.unit}</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ) : (
-                  <p className={`text-sm ${t.faint}`}>
-                    {activeSession && parseWatchSymbols(activeSession.watchList).length > 0
-                      ? 'Hit "Scan now" to load market data.'
-                      : 'Symbols are being identified — scan will begin automatically.'}
-                  </p>
-                )}
-              </div>
             )}
+            <div className={`${liveSignals.length > 0 ? `mt-4 pt-4 border-t ${t.divider}` : 'mt-4'}`}>
+              {watchMetrics.length > 0 ? (
+                <div className="space-y-3">
+                  {liveSignals.length === 0 && <p className={`text-xs ${t.faint} mb-3`}>Watching — no threshold crossed yet</p>}
+                  {watchMetrics.map((m) => {
+                    const pct = Math.min(100, Math.max(0, ((m.value - m.min) / (m.max - m.min)) * 100))
+                    const lowPct = ((m.lowThreshold - m.min) / (m.max - m.min)) * 100
+                    const highPct = ((m.highThreshold - m.min) / (m.max - m.min)) * 100
+                    const hot = m.value <= m.lowThreshold || m.value >= m.highThreshold
+                    return (
+                      <div key={m.symbol} className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className={`font-semibold ${t.heading}`}>{m.symbol}</span>
+                          <span className={hot ? `font-bold ${dk ? 'text-blue-400' : 'text-blue-600'}` : t.muted}>
+                            {m.label}: {m.value.toFixed(1)}{m.unit}{hot ? ' ↑' : ''}
+                          </span>
+                        </div>
+                        <div className="relative h-2.5 rounded-full overflow-visible" style={{ background: dk ? '#1e293b' : '#e5e7eb' }}>
+                          <div className="absolute left-0 top-0 h-full rounded-l-full bg-emerald-500/25" style={{ width: `${lowPct}%` }} />
+                          <div className="absolute top-0 h-full rounded-r-full bg-red-500/25" style={{ left: `${highPct}%`, width: `${100 - highPct}%` }} />
+                          <div className="absolute top-0 w-0.5 h-full bg-emerald-500/60" style={{ left: `${lowPct}%` }} />
+                          <div className="absolute top-0 w-0.5 h-full bg-red-500/60" style={{ left: `${highPct}%` }} />
+                          <div
+                            className={`absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full border-2 border-white shadow-sm transition-all ${hot ? 'bg-blue-500' : dk ? 'bg-slate-400' : 'bg-gray-400'}`}
+                            style={{ left: `${pct}%` }}
+                          />
+                        </div>
+                        <div className={`flex justify-between text-xs ${t.faint}`}>
+                          <span>{m.min}{m.unit}</span>
+                          <span className="text-emerald-600">{m.lowThreshold}{m.unit}</span>
+                          <span className="text-red-500">{m.highThreshold}{m.unit}</span>
+                          <span>{m.max}{m.unit}</span>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <p className={`text-sm ${t.faint}`}>
+                  {activeSession && parseWatchSymbols(activeSession.watchList).length > 0
+                    ? 'Hit "Scan now" to load market data.'
+                    : 'Save a session with a watch list to enable scanning.'}
+                </p>
+              )}
+            </div>
             {scanStatus && (
               <p className={`mt-3 text-xs font-mono ${t.scanStatus} border-t ${t.divider} pt-3`}>{scanStatus}</p>
             )}
