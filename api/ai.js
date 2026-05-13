@@ -1,5 +1,5 @@
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-3.5-turbo'
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash'
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-2.0-flash'
 const ALLOWED_ORIGIN = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:5173'
 
 const rateLimitMap = new Map()
