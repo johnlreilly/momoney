@@ -903,7 +903,7 @@ export default function App() {
       <header className={`sticky top-0 z-10 w-full rounded-b-3xl border-b ${t.divider} ${dk ? 'bg-slate-900/95' : 'bg-white/95'} shadow-xl backdrop-blur px-4 pt-5 pb-4`}>
         <div className="mx-auto max-w-7xl flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-baseline gap-3">
-            <h1 className={`text-xl font-semibold ${t.heading}`}>momoney</h1>
+            <h1 className={`text-xl font-semibold ${t.heading}`}>mo' money</h1>
             <span className={`text-xs ${t.faint}`}>v{VERSION}</span>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1144,7 +1144,7 @@ export default function App() {
 
 
         {/* ── Market Tools + Manual Trade Entry ── */}
-        <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+        <section className="grid gap-6 xl:grid-cols-2">
           <div className={`${t.card} p-6 space-y-4`}>
             <h2 className={`text-base font-semibold ${t.heading}`}>Market Data</h2>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -1204,7 +1204,7 @@ export default function App() {
         </section>
 
         {/* ── Performance History ── */}
-        <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
+        <section className="grid gap-6 xl:grid-cols-2">
           <article className={`${t.card} p-6`}>
             <div className="flex items-center justify-between gap-4">
               <div>
