@@ -5,7 +5,7 @@ const initialState = {
   trades: [],
   marketData: {},
   settings: {
-    marketApiKey: '',
+    languageModelProvider: 'openai',
   },
 }
 
@@ -13,7 +13,15 @@ export function loadData() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (!raw) return initialState
-    return JSON.parse(raw)
+    const parsed = JSON.parse(raw)
+    return {
+      ...initialState,
+      ...parsed,
+      settings: {
+        ...initialState.settings,
+        ...(parsed.settings || {}),
+      },
+    }
   } catch (error) {
     console.error('Failed to load research data', error)
     return initialState

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createId, loadData, saveData } from './storage.js'
-import { fetchDailySeries, fetchIntradaySeries, fetchQuote } from './marketData.js'
 
 const STARTING_CASH = 100000
 const DEFAULT_PROMPT = `You're an investor in the U.S. stock market. You get trades for free and you have $100,000 to start with. You want to maximize returns each day but you want to exit all positions to cash at the end of the day. What are you doing today?`
@@ -21,13 +20,14 @@ function displayDate(value) {
 
 export default function App() {
   const today = formatDate(new Date())
-  const [data, setData] = useState({ dailyPlans: [], trades: [], marketData: {}, settings: { marketApiKey: '' } })
+  const [data, setData] = useState({ dailyPlans: [], trades: [], marketData: {}, settings: { languageModelProvider: 'openai' } })
   const [selectedDate, setSelectedDate] = useState(today)
   const [planDraft, setPlanDraft] = useState({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
   const [tradeDraft, setTradeDraft] = useState({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
   const [marketSymbol, setMarketSymbol] = useState('')
   const [intradayInterval, setIntradayInterval] = useState('5min')
   const [marketStatus, setMarketStatus] = useState('')
+  const [planStatus, setPlanStatus] = useState('')
   const [marketLoading, setMarketLoading] = useState(false)
 
   useEffect(() => {
@@ -37,7 +37,7 @@ export default function App() {
       trades: loaded.trades || [],
       marketData: loaded.marketData || {},
       settings: {
-        marketApiKey: loaded.settings?.marketApiKey || '',
+        languageModelProvider: loaded.settings?.languageModelProvider || 'openai',
       },
     })
   }, [])
@@ -54,6 +54,11 @@ export default function App() {
   const dailyTrades = useMemo(
     () => data.trades.filter((trade) => trade.date === selectedDate),
     [data.trades, selectedDate],
+  )
+
+  const planInterpretation = useMemo(
+    () => (dailyPlan ? summarizePlan(dailyPlan) : ''),
+    [dailyPlan],
   )
 
   const history = useMemo(() => {
@@ -120,15 +125,15 @@ export default function App() {
     }
     setMarketStatus(`Fetching quote for ${symbol}...`)
     setMarketLoading(true)
-    const apiKey = data.settings.marketApiKey || ''
     try {
-      const quote = await fetchQuote(symbol, apiKey || undefined)
+      const response = await fetch(`/api/market?type=quote&symbol=${encodeURIComponent(symbol)}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || 'Could not fetch quote.')
+      }
+      const quote = await response.json()
       setData((current) => ({
         ...current,
-        settings: {
-          ...current.settings,
-          marketApiKey: current.settings.marketApiKey || '',
-        },
         marketData: {
           ...current.marketData,
           [symbol]: {
@@ -154,9 +159,13 @@ export default function App() {
     }
     setMarketStatus(`Loading daily series for ${symbol}...`)
     setMarketLoading(true)
-    const apiKey = data.settings.marketApiKey || ''
     try {
-      const dailySeries = await fetchDailySeries(symbol, apiKey || undefined)
+      const response = await fetch(`/api/market?type=daily&symbol=${encodeURIComponent(symbol)}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || 'Could not load history.')
+      }
+      const dailySeries = await response.json()
       setData((current) => ({
         ...current,
         marketData: {
@@ -184,9 +193,13 @@ export default function App() {
     }
     setMarketStatus(`Loading intraday series for ${symbol} at ${intradayInterval}...`)
     setMarketLoading(true)
-    const apiKey = data.settings.marketApiKey || ''
     try {
-      const intraday = await fetchIntradaySeries(symbol, intradayInterval, apiKey || undefined)
+      const response = await fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(intradayInterval)}`)
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || 'Could not load intraday history.')
+      }
+      const intraday = await response.json()
       setData((current) => ({
         ...current,
         marketData: {
@@ -219,6 +232,228 @@ export default function App() {
       exitPrice: prev.exitPrice || saved.quote.price.toFixed(2),
     }))
     setMarketStatus(`Filled trade prices with ${symbol} latest quote.`)
+  }
+
+  function parseWatchSymbols(text) {
+    return (text || '')
+      .split(/[,;|\s]+/)
+      .map((token) => token.trim().toUpperCase().replace(/[^A-Z0-9.]/g, ''))
+      .filter((token) => token.length > 0 && token.length <= 5)
+  }
+
+  function parseAiPlanResponse(text) {
+    const normalized = text.replace(/\r/g, '')
+    const planMatch = normalized.match(/Plan\s*[:\-]\s*([\s\S]*?)(?=(Watch list|Watchlist|Notes|$))/i)
+    const watchMatch = normalized.match(/Watch\s*list\s*[:\-]\s*([\s\S]*?)(?=(Notes|$))/i)
+    const notesMatch = normalized.match(/Notes\s*[:\-]\s*([\s\S]*)/i)
+    const plan = planMatch ? planMatch[1].trim() : normalized.trim()
+    const watchList = watchMatch ? watchMatch[1].trim().replace(/[\r\n]+/g, ' ').replace(/\s*,\s*/g, ', ') : ''
+    const notes = notesMatch ? notesMatch[1].trim() : ''
+    return { plan, watchList, notes }
+  }
+
+  function inferPlanAction(text) {
+    const normalized = (text || '').toLowerCase()
+    if (/(short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)/.test(normalized)) {
+      return 'Sell'
+    }
+    if (/(buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)/.test(normalized)) {
+      return 'Buy'
+    }
+    return 'Buy'
+  }
+
+  function inferSymbolAction(symbol, text) {
+    const normalized = (text || '').toLowerCase()
+    const ticker = symbol.toLowerCase()
+    if (new RegExp(`(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:short|sell|exit|bearish|reduce|fade|trim|lighten|book profit|close position)`, 'i').test(normalized)) {
+      return 'Sell'
+    }
+    if (new RegExp(`(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest).*\\b${ticker}\\b|\\b${ticker}\\b.*(?:buy|long|bullish|accumulate|add|buying|go long|strength|breakout|retest)`, 'i').test(normalized)) {
+      return 'Buy'
+    }
+    return inferPlanAction(text)
+  }
+
+  async function generateMorningPlanFromAI() {
+    const provider = data.settings.languageModelProvider || 'openai'
+    setMarketLoading(true)
+    setPlanStatus('Generating morning plan from AI...')
+
+    try {
+      const prompt = `${DEFAULT_PROMPT}\n\nPlease provide a concise plan and watch list. Format your reply like:\nPlan: ...\nWatch list: ...\nNotes: ...`
+      const response = await fetch('/api/ai', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider,
+          prompt,
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.error || 'AI plan generation failed.')
+      }
+
+      const result = await response.json()
+      const aiText = result?.text?.trim() || ''
+      if (!aiText) {
+        throw new Error('AI returned an empty response.')
+      }
+
+      const parsed = parseAiPlanResponse(aiText)
+      const plan = {
+        id: createId(),
+        date: selectedDate,
+        prompt: DEFAULT_PROMPT,
+        response: parsed.plan,
+        watchList: parsed.watchList,
+        riskProfile: 'Medium',
+        notes: parsed.notes,
+        createdAt: new Date().toISOString(),
+      }
+
+      setData((current) => ({
+        ...current,
+        dailyPlans: [...current.dailyPlans.filter((item) => item.date !== selectedDate), plan],
+      }))
+      setPlanStatus('Morning plan generated and saved from AI.')
+    } catch (error) {
+      setPlanStatus(error.message || 'Could not generate a plan from AI.')
+    } finally {
+      setMarketLoading(false)
+    }
+  }
+
+  function summarizePlan(plan) {
+    const symbols = parseWatchSymbols(plan.watchList)
+    const bias = inferPlanAction(plan.response || plan.watchList)
+    const signal = /(breakout|momentum|strength|uptrend|rally)/i.test(plan.response)
+      ? 'momentum/breakout focus'
+      : /(dip|pullback|retest|mean reversion|support)/i.test(plan.response)
+      ? 'pullback/support focus'
+      : 'general directional bias'
+    const symbolText = symbols.length ? symbols.join(', ') : 'watch list symbols'
+    return `Interpreted as a ${bias.toLowerCase()} bias for ${symbolText} with a ${signal}.`
+  }
+
+  function estimateQuantity(price) {
+    if (!price || price <= 0) {
+      return 10
+    }
+    if (price > 250) {
+      return Math.max(1, Math.min(100, Math.floor(STARTING_CASH / price / 10)))
+    }
+    return Math.max(1, Math.min(300, Math.floor(1000 / price)))
+  }
+
+  function calculateExitPrice(entryPrice, action, intraday) {
+    if (!entryPrice) return entryPrice
+    const latest = intraday?.[0]?.close ?? entryPrice
+    if (action === 'Buy') {
+      const target = latest * 1.015
+      if (intraday?.length > 1) {
+        const high = Math.max(...intraday.map((point) => point.high))
+        return Math.max(target, high || target)
+      }
+      return target
+    }
+    const target = latest * 0.985
+    if (intraday?.length > 1) {
+      const low = Math.min(...intraday.map((point) => point.low))
+      return Math.min(target, low || target)
+    }
+    return target
+  }
+
+  async function followMorningAdvice() {
+    if (!dailyPlan) {
+      setPlanStatus('Save a morning plan first.')
+      return
+    }
+
+    const symbols = parseWatchSymbols(dailyPlan.watchList)
+    if (symbols.length === 0) {
+      setPlanStatus('Add one or more ticker symbols to the watch list first.')
+      return
+    }
+
+    setMarketLoading(true)
+    setPlanStatus('Interpreting plan and generating hypothetical trades...')
+    const trades = []
+    const cachedMarketData = { ...data.marketData }
+
+    for (const symbol of symbols) {
+      const action = inferSymbolAction(symbol, dailyPlan.response || dailyPlan.watchList)
+      try {
+        if (!cachedMarketData[symbol]?.quote) {
+          const response = await fetch(`/api/market?type=quote&symbol=${encodeURIComponent(symbol)}`)
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null)
+            throw new Error(errorData?.error || `Could not fetch quote for ${symbol}`)
+          }
+          const quote = await response.json()
+          cachedMarketData[symbol] = {
+            ...(cachedMarketData[symbol] || {}),
+            quote,
+          }
+        }
+      } catch (error) {
+        // skip symbols that cannot be fetched
+        continue
+      }
+
+      const symbolMarket = cachedMarketData[symbol]
+      if (!symbolMarket?.quote) {
+        continue
+      }
+
+      let intraday = symbolMarket.intraday
+      if (!intraday || intraday.length === 0) {
+        try {
+          const response = await fetch(`/api/market?type=intraday&symbol=${encodeURIComponent(symbol)}&interval=${encodeURIComponent(intradayInterval)}`)
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => null)
+            throw new Error(errorData?.error || `Could not fetch intraday data for ${symbol}`)
+          }
+          intraday = await response.json()
+          cachedMarketData[symbol] = {
+            ...symbolMarket,
+            intraday,
+          }
+        } catch (error) {
+          intraday = []
+        }
+      }
+
+      const entryPrice = symbolMarket.quote.price
+      const exitPrice = calculateExitPrice(entryPrice, action, intraday)
+      trades.push({
+        id: createId(),
+        date: selectedDate,
+        symbol,
+        action,
+        quantity: estimateQuantity(entryPrice),
+        entryPrice,
+        exitPrice,
+        riskRating: dailyPlan.riskProfile || 'Medium',
+        notes: `Auto-generated from plan: ${dailyPlan.response.slice(0, 120)}`,
+        createdAt: new Date().toISOString(),
+      })
+    }
+
+    setData((current) => ({
+      ...current,
+      marketData: cachedMarketData,
+      trades: [...current.trades, ...trades],
+    }))
+    setMarketStatus('')
+    setPlanStatus(`Generated ${trades.length} trades from the morning plan.`)
+    setMarketSymbol(symbols[0] || marketSymbol)
+    setMarketLoading(false)
   }
 
   function computeTradePL(trade) {
@@ -321,7 +556,6 @@ export default function App() {
   const currentSeries = currentMarketData?.dailySeries || []
   const currentIntraday = currentMarketData?.intraday || []
   const tradeSymbolData = data.marketData[tradeDraft.symbol.trim().toUpperCase()] || null
-  const apiKeyLabel = data.settings.marketApiKey ? 'Saved key' : 'Using demo key'
   const todaysMetrics = computeMetrics(selectedDate)
 
   return (
@@ -374,9 +608,14 @@ export default function App() {
                     <input value={planDraft.notes} onChange={(event) => setPlanDraft((prev) => ({ ...prev, notes: event.target.value }))} className="mt-2 w-full rounded-2xl bg-slate-950/80 border border-slate-700 p-3 text-slate-200 outline-none" placeholder="Additional discipline, exit conditions, portfolio sizing" />
                   </label>
                 </div>
-                <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
-                  Save morning plan
-                </button>
+                <div className="flex flex-wrap gap-3">
+                  <button type="submit" className="inline-flex items-center justify-center rounded-2xl bg-emerald-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-emerald-400">
+                    Save morning plan
+                  </button>
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400">
+                    Generate plan from AI
+                  </button>
+                </div>
               </form>
             ) : (
               <div className="mt-6 space-y-5 rounded-3xl border border-slate-800 bg-slate-950/80 p-5">
@@ -388,6 +627,17 @@ export default function App() {
                   <p className="text-sm uppercase tracking-[0.24em] text-slate-400">Watch list / parameters</p>
                   <p className="mt-3 whitespace-pre-wrap rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-100">{dailyPlan.watchList || 'No watch list set.'}</p>
                 </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" onClick={followMorningAdvice} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-indigo-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-indigo-400 disabled:bg-slate-700">
+                    Generate trades from plan
+                  </button>
+                  <button type="button" onClick={generateMorningPlanFromAI} disabled={marketLoading} className="inline-flex items-center justify-center rounded-2xl bg-blue-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-blue-400 disabled:bg-slate-700">
+                    Regenerate plan from AI
+                  </button>
+                  <span className="text-sm text-slate-400">Use your OpenAI API key to create or refresh the morning plan automatically.</span>
+                </div>
+                {planInterpretation && <p className="mt-3 text-sm text-slate-300">{planInterpretation}</p>}
+                {planStatus && <p className="mt-3 text-sm text-slate-300">{planStatus}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-3xl bg-slate-900/80 p-4">
                     <p className="text-sm text-slate-400">Risk profile</p>
@@ -455,15 +705,22 @@ export default function App() {
           <div className="mt-6 grid gap-4 rounded-3xl border border-slate-800 bg-slate-950/80 p-5 sm:grid-cols-[1.1fr_0.9fr]">
             <div className="space-y-4">
               <label className="block text-sm font-medium text-slate-200">
-                Market API key
-                <input value={data.settings.marketApiKey} onChange={(event) => setData((current) => ({
+                AI provider
+                <select value={data.settings.languageModelProvider || 'openai'} onChange={(event) => setData((current) => ({
                   ...current,
                   settings: {
                     ...current.settings,
-                    marketApiKey: event.target.value.trim(),
+                    languageModelProvider: event.target.value,
                   },
-                }))} placeholder="Alpha Vantage API key or leave blank for demo" className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none" />
+                }))} className="mt-2 w-full rounded-2xl bg-slate-900/80 border border-slate-700 p-3 text-slate-200 outline-none">
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                </select>
               </label>
+              <div className="rounded-3xl bg-slate-950/80 p-4 text-sm text-slate-300">
+                <p className="text-slate-400">API secrets are stored on the server.</p>
+                <p className="mt-2">Deploy with your environment variables instead of saving keys in the browser.</p>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="block text-sm font-medium text-slate-200">
                   Symbol
@@ -486,11 +743,11 @@ export default function App() {
                 <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="inline-flex items-center justify-center rounded-2xl bg-violet-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-violet-400 disabled:bg-slate-700">
                   Load daily history
                 </button>
-                <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="inline-flex items-center justify-center rounded-2xl bg-fuchsia-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-400 disabled:bg-slate-700">
+                <button type="button" disabled={marketLoading} onClick={fetchMarketIntraday} className="inline-flex items-center justify-center rounded-2xl bg-fuchsia-500 px-4 py-3 text-sm font-semibold text-slate-950 transition hover:bg-fuchsia-400 disabled:bg-fuchsia-700">
                   Load intraday data
                 </button>
               </div>
-              <p className="text-sm text-slate-400">{marketStatus || apiKeyLabel}</p>
+              <p className="text-sm text-slate-400">{marketStatus || 'Market and AI keys are stored securely on the server.'}</p>
             </div>
             <div className="rounded-3xl bg-slate-900/80 p-4 text-sm text-slate-300">
               {currentQuote ? (
