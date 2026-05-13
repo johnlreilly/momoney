@@ -946,7 +946,7 @@ export default function App() {
                   key={decision.phase}
                   type="button"
                   onClick={() => setSelectedPhase(decision.phase)}
-                  className={`rounded-2xl border p-3 text-left transition ${
+                  className={`rounded-2xl border p-3 text-left transition flex flex-col justify-start ${
                     isSelected
                       ? dk ? 'border-blue-500 bg-blue-900/30' : 'border-blue-500 bg-blue-50'
                       : decision.status === 'active'    ? t.decActive
