@@ -1,79 +1,51 @@
-import { createClient } from '@libsql/client'
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
+import { DynamoDBDocumentClient, QueryCommand, PutCommand, DeleteCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb'
 
-let _client = null
+const client = new DynamoDBClient({ region: process.env.AWS_REGION || 'us-east-1' })
+export const db = DynamoDBDocumentClient.from(client)
+export const TABLE = process.env.DYNAMODB_TABLE || 'momoney'
 
-export function getDb() {
-  if (_client) return _client
-  _client = createClient({
-    url: process.env.TURSO_DATABASE_URL,
-    authToken: process.env.TURSO_AUTH_TOKEN,
-  })
-  return _client
+export const pk = (userId) => `USER#${userId}`
+
+// Query all items for a user, handling DynamoDB pagination automatically
+export async function queryAll(userId) {
+  const items = []
+  let lastKey
+  do {
+    const res = await db.send(new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: 'pk = :pk',
+      ExpressionAttributeValues: { ':pk': pk(userId) },
+      ExclusiveStartKey: lastKey,
+    }))
+    items.push(...(res.Items || []))
+    lastKey = res.LastEvaluatedKey
+  } while (lastKey)
+  return items
 }
 
-let _ready = false
+// Query items with a sk prefix (e.g. 'TRADE#', 'SIGNAL#2026-05-14')
+export async function queryPrefix(userId, skPrefix) {
+  const items = []
+  let lastKey
+  do {
+    const res = await db.send(new QueryCommand({
+      TableName: TABLE,
+      KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: { ':pk': pk(userId), ':prefix': skPrefix },
+      ExclusiveStartKey: lastKey,
+    }))
+    items.push(...(res.Items || []))
+    lastKey = res.LastEvaluatedKey
+  } while (lastKey)
+  return items
+}
 
-export async function ensureSchema(db) {
-  if (_ready) return
-  await db.executeMultiple(`
-    CREATE TABLE IF NOT EXISTS trades (
-      id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      symbol TEXT NOT NULL,
-      action TEXT NOT NULL,
-      quantity REAL NOT NULL,
-      entry_price REAL NOT NULL,
-      exit_price REAL NOT NULL,
-      risk_rating TEXT DEFAULT 'Medium',
-      notes TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-    );
-    CREATE TABLE IF NOT EXISTS daily_sessions (
-      id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      phase TEXT NOT NULL,
-      response TEXT DEFAULT '',
-      watch_list TEXT DEFAULT '',
-      notes TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-    );
-    CREATE TABLE IF NOT EXISTS daily_plans (
-      id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      date TEXT NOT NULL,
-      response TEXT DEFAULT '',
-      watch_list TEXT DEFAULT '',
-      risk_profile TEXT DEFAULT '',
-      notes TEXT DEFAULT '',
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-    );
-    CREATE TABLE IF NOT EXISTS executed_signals (
-      id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      sig_date TEXT DEFAULT '',
-      signal_json TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-    );
-    CREATE TABLE IF NOT EXISTS activity_log (
-      id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      date TEXT DEFAULT '',
-      type TEXT NOT NULL,
-      message TEXT DEFAULT '',
-      detail TEXT DEFAULT '',
-      timestamp TEXT NOT NULL,
-      PRIMARY KEY (id, user_id)
-    );
-    CREATE TABLE IF NOT EXISTS settings (
-      user_id TEXT PRIMARY KEY,
-      language_model_provider TEXT DEFAULT 'gemini'
-    );
-  `)
-  _ready = true
+// Batch write up to N items (DynamoDB limit: 25 per call)
+export async function batchWrite(requests) {
+  const chunks = []
+  for (let i = 0; i < requests.length; i += 25) chunks.push(requests.slice(i, i + 25))
+  for (const chunk of chunks) {
+    await db.send(new BatchWriteCommand({ RequestItems: { [TABLE]: chunk } }))
+  }
 }
