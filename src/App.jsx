@@ -296,7 +296,12 @@ export default function App() {
     settings: { languageModelProvider: 'gemini' },
   })
   const [selectedDate, setSelectedDate] = useState(today)
-  const [planDraft, setPlanDraft] = useState({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
+  const [planDraft, setPlanDraft] = useState(() => {
+    try {
+      const saved = localStorage.getItem('momoney-plan-draft')
+      return saved ? JSON.parse(saved) : { response: '', watchList: '', riskProfile: 'Medium', notes: '' }
+    } catch { return { response: '', watchList: '', riskProfile: 'Medium', notes: '' } }
+  })
   const [tradeDraft, setTradeDraft] = useState({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
   const [marketSymbol, setMarketSymbol] = useState('')
   const [intradayInterval] = useState('5min')
@@ -350,6 +355,10 @@ export default function App() {
     dataRef.current = data
     marketDataRef.current = data.marketData
   }, [data])
+
+  useEffect(() => {
+    localStorage.setItem('momoney-plan-draft', JSON.stringify(planDraft))
+  }, [planDraft])
 
   const dailyPlan = useMemo(
     () => data.dailyPlans.find((plan) => plan.date === selectedDate),
@@ -1354,6 +1363,7 @@ export default function App() {
               notes: planDraft.notes.trim(),
             })
             setPlanDraft({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
+            localStorage.removeItem('momoney-plan-draft')
           }
 
           async function handleCopyPrompt() {
