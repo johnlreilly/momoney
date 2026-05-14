@@ -365,6 +365,30 @@ export default function App() {
     () => sessionsForDate.find((s) => s.phase === selectedPhase) || null,
     [sessionsForDate, selectedPhase],
   )
+  function playBeep(type = 'single') {
+    try {
+      const ctx = new AudioContext()
+      const beep = (freq, start, duration) => {
+        const osc = ctx.createOscillator()
+        const gain = ctx.createGain()
+        osc.connect(gain)
+        gain.connect(ctx.destination)
+        osc.frequency.value = freq
+        osc.type = 'sine'
+        gain.gain.setValueAtTime(0.25, ctx.currentTime + start)
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + duration)
+        osc.start(ctx.currentTime + start)
+        osc.stop(ctx.currentTime + start + duration)
+      }
+      if (type === 'double') {
+        beep(880, 0, 0.12)
+        beep(1100, 0.18, 0.12)
+      } else {
+        beep(660, 0, 0.15)
+      }
+    } catch { /* AudioContext blocked — ignore */ }
+  }
+
   function saveSession(phase, fields) {
     const session = { id: createId(), date: selectedDate, phase, createdAt: new Date().toISOString(), ...fields }
     setData((current) => {
@@ -443,6 +467,7 @@ export default function App() {
       trades: [...current.trades, trade],
     }))
     api.addTrade(trade)
+    playBeep('single')
     setTradeDraft({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
   }
 
@@ -655,6 +680,8 @@ export default function App() {
     }
 
     if (newTrades.length === 0 && newExecuted.length === 0) return
+
+    if (newTrades.length > 0) playBeep('double')
 
     setData((prev) => ({
       ...prev,
