@@ -390,6 +390,16 @@ export default function App() {
     [data.trades, selectedDate],
   )
 
+  const filteredDailyTrades = useMemo(() => {
+    const phase = PHASE_SCHEDULE.find((p) => p.phase === selectedPhase)
+    if (!phase) return dailyTrades
+    return dailyTrades.filter((trade) => {
+      if (!trade.createdAt) return true
+      const h = new Date(trade.createdAt).getHours() + new Date(trade.createdAt).getMinutes() / 60
+      return h >= phase.startHour && h < phase.endHour
+    })
+  }, [dailyTrades, selectedPhase])
+
   const planInterpretation = useMemo(
     () => (dailyPlan ? summarizePlan(dailyPlan) : ''),
     [dailyPlan],
@@ -1030,11 +1040,10 @@ export default function App() {
         </section>
 
         {/* ── Live Signals ── */}
-        <section className={`${t.card} p-5`}>
+        <section className={`${scanning ? (dk ? 'rounded-3xl border border-blue-800 bg-blue-950/50' : 'rounded-3xl border border-blue-200 bg-blue-50') : t.card} p-5 transition-colors duration-500`}>
             <div className="flex items-center justify-between gap-4">
               <div>
                 <h2 className={`text-base font-semibold ${t.heading}`}>Live Signals</h2>
-                {lastAutoScan && <p className={`text-xs ${t.faint} mt-0.5`}>Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>}
               </div>
               <button
                 type="button"
@@ -1127,15 +1136,20 @@ export default function App() {
                 </p>
               )}
             </div>
-            {scanStatus && (
-              <p className={`mt-3 text-xs font-mono ${t.scanStatus} border-t ${t.divider} pt-3`}>{scanStatus}</p>
+            {lastAutoScan && (
+              <p className={`mt-3 text-xs ${t.faint} border-t ${t.divider} pt-3`}>
+                Last scan {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </p>
             )}
         </section>
 
         {/* ── Trade Table ── */}
         <section className={`${t.card} p-5`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <h2 className={`text-base font-semibold ${t.heading}`}>Trades — {displayDate(selectedDate)}</h2>
+            <div>
+              <h2 className={`text-base font-semibold ${t.heading}`}>Trades — {displayDate(selectedDate)}</h2>
+              <p className={`text-xs ${t.faint} mt-0.5`}>{PHASE_SCHEDULE.find((p) => p.phase === selectedPhase)?.label} · {filteredDailyTrades.length} of {dailyTrades.length}</p>
+            </div>
             <div className="flex gap-2">
               <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Export Day</button>
               <button type="button" onClick={exportAllCsv} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-200' : 'bg-gray-300 text-gray-700'} px-3 py-1.5 text-xs font-semibold transition hover:opacity-80`}>Export All</button>
@@ -1164,10 +1178,10 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {dailyTrades.length === 0 ? (
-                  <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-400">No trades yet — auto-trades will appear here as signals fire.</td></tr>
+                {filteredDailyTrades.length === 0 ? (
+                  <tr><td colSpan="9" className="px-4 py-8 text-center text-gray-400">{dailyTrades.length > 0 ? 'No trades this phase.' : 'No trades yet — auto-trades will appear here as signals fire.'}</td></tr>
                 ) : (
-                  dailyTrades.map((trade) => {
+                  filteredDailyTrades.map((trade) => {
                     const pl = computeTradePL(trade)
                     const isAuto = trade.notes?.startsWith('Auto')
                     return (
@@ -1207,23 +1221,10 @@ export default function App() {
         <section className="grid gap-6 xl:grid-cols-2">
           <div className={`${t.card} p-6 space-y-4`}>
             <h2 className={`text-base font-semibold ${t.heading}`}>Market Data</h2>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className={`block text-sm font-medium ${t.body}`}>
-                AI provider
-                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => {
-                    const languageModelProvider = event.target.value
-                    setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider } }))
-                    api.updateSettings({ languageModelProvider })
-                  }} className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`}>
-                  <option value="gemini">Gemini</option>
-                  <option value="openai">OpenAI</option>
-                </select>
-              </label>
-              <label className={`block text-sm font-medium ${t.body}`}>
-                Symbol
-                <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`} />
-              </label>
-            </div>
+            <label className={`block text-sm font-medium ${t.body}`}>
+              Symbol
+              <input value={marketSymbol} onChange={(event) => setMarketSymbol(event.target.value.toUpperCase())} placeholder="AAPL" className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`} />
+            </label>
             <div className="flex flex-wrap gap-3">
               <button type="button" disabled={marketLoading} onClick={fetchMarketQuote} className="rounded-2xl bg-sky-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-sky-500 disabled:opacity-50">Fetch Quote</button>
               <button type="button" disabled={marketLoading} onClick={fetchMarketHistory} className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-violet-500 disabled:opacity-50">Daily History</button>
@@ -1350,7 +1351,6 @@ export default function App() {
         {(() => {
           const phaseInfo = PHASE_SCHEDULE.find((p) => p.phase === selectedPhase)
           const phasePrompt = PHASE_PROMPTS[selectedPhase]
-          const isAfterHours = selectedPhase === 'after-hours'
 
           function handleSessionSubmit(e) {
             e.preventDefault()
@@ -1428,9 +1428,7 @@ export default function App() {
               </div>
               <p className={`text-sm ${t.muted} mb-6`}>{phaseInfo?.description}</p>
 
-              {isAfterHours ? (
-                <p className={`text-sm ${t.muted}`}>Market closed — review your trades and prepare for tomorrow.</p>
-              ) : !activeSession ? (
+              {!activeSession ? (
                 <form onSubmit={handleSessionSubmit} className="space-y-4">
                   <div className="space-y-2">
                     <label className={`text-sm font-medium ${t.body}`}>Phase prompt</label>
@@ -1448,10 +1446,14 @@ export default function App() {
                     <label className={`text-sm font-medium ${t.body}`}>Notes</label>
                     <input value={planDraft.notes} onChange={(e) => setPlanDraft((p) => ({ ...p, notes: e.target.value }))} className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`} placeholder="Key levels, discipline, exit conditions…" />
                   </div>
-                  <div className="flex flex-wrap gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <button type="submit" className="rounded-2xl bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 transition">Save Session</button>
                     <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Generate From AI</button>
-                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-5 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy Prompt</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Copy Prompt</button>
+                    <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => { const languageModelProvider = event.target.value; setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider } })); api.updateSettings({ languageModelProvider }) }} className={`rounded-2xl border px-3 py-2.5 text-sm outline-none ${t.input}`}>
+                      <option value="gemini">Gemini</option>
+                      <option value="openai">OpenAI</option>
+                    </select>
                   </div>
                   {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
                 </form>
@@ -1494,7 +1496,7 @@ export default function App() {
                   )}
                   <div className="flex flex-wrap gap-3">
                     <button type="button" onClick={handleGenerateFromAI} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Regenerate From AI</button>
-                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className={`rounded-2xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>Copy Prompt</button>
+                    <button type="button" onClick={handleCopyPrompt} disabled={marketLoading} className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-500 transition disabled:opacity-50">Copy Prompt</button>
                     <button type="button" onClick={() => clearSession(selectedPhase)} className="rounded-2xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-500 transition">Clear Session</button>
                   </div>
                   {planStatus && <p className={`text-sm ${t.scanStatus}`}>{planStatus}</p>}
