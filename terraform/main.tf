@@ -89,7 +89,7 @@ resource "aws_lambda_function" "cron" {
   function_name    = "momoney-cron"
   role             = aws_iam_role.cron.arn
   handler          = "cron.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   timeout          = 30
 
   environment {

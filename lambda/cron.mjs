@@ -1,7 +1,7 @@
 // AWS Lambda handler — invoked by EventBridge on a cron schedule.
 // AWS SDK v3 is built into the Lambda Node.js 20.x runtime; no bundling needed.
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb'
-import { DynamoDBDocumentClient, QueryCommand, PutCommand, BatchWriteCommand } from '@aws-sdk/lib-dynamodb'
+import { DynamoDBDocumentClient, QueryCommand, PutCommand } from '@aws-sdk/lib-dynamodb'
 
 const TABLE  = process.env.DYNAMODB_TABLE || 'momoney'
 const REGION = process.env.AWS_REGION     || 'us-east-1'
