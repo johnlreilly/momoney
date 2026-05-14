@@ -1,0 +1,156 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: momoney DynamoDB table, Lambda cron, and EventBridge schedules
+
+Parameters:
+  GeminiApiKey:
+    Type: String
+    NoEcho: true
+  AlphaVantageApiKey:
+    Type: String
+    NoEcho: true
+
+Resources:
+
+  MomoneyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: momoney
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: sk-index
+          KeySchema:
+            - AttributeName: sk
+              KeyType: HASH
+          Projection:
+            ProjectionType: KEYS_ONLY
+
+  CronRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: momoney-cron
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: momoney-cron-policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dynamodb:Query
+                  - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
+                Resource:
+                  - !GetAtt MomoneyTable.Arn
+                  - !Sub '${MomoneyTable.Arn}/index/*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: 'arn:aws:logs:*:*:*'
+
+  CronFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: momoney-cron
+      Runtime: nodejs20.x
+      Handler: index.handler
+      Role: !GetAtt CronRole.Arn
+      Timeout: 30
+      Environment:
+        Variables:
+          DYNAMODB_TABLE: momoney
+          GEMINI_API_KEY: !Ref GeminiApiKey
+          ALPHA_VANTAGE_API_KEY: !Ref AlphaVantageApiKey
+      Code:
+        ZipFile: |
+          export const handler = async () => { return { message: 'placeholder — deploy real code via Lambda console' } }
+
+  PreMarketRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: momoney-pre-market
+      ScheduleExpression: 'cron(50 11 ? * MON-FRI *)'
+      State: ENABLED
+      Targets:
+        - Id: momoney-cron-pre-market
+          Arn: !GetAtt CronFunction.Arn
+
+  OpeningDriveRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: momoney-opening-drive
+      ScheduleExpression: 'cron(20 13 ? * MON-FRI *)'
+      State: ENABLED
+      Targets:
+        - Id: momoney-cron-opening-drive
+          Arn: !GetAtt CronFunction.Arn
+
+  MiddayFadeRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: momoney-midday-fade
+      ScheduleExpression: 'cron(20 14 ? * MON-FRI *)'
+      State: ENABLED
+      Targets:
+        - Id: momoney-cron-midday-fade
+          Arn: !GetAtt CronFunction.Arn
+
+  PowerHourRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: momoney-power-hour
+      ScheduleExpression: 'cron(50 18 ? * MON-FRI *)'
+      State: ENABLED
+      Targets:
+        - Id: momoney-cron-power-hour
+          Arn: !GetAtt CronFunction.Arn
+
+  PreMarketPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CronFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PreMarketRule.Arn
+
+  OpeningDrivePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CronFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt OpeningDriveRule.Arn
+
+  MiddayFadePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CronFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MiddayFadeRule.Arn
+
+  PowerHourPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref CronFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PowerHourRule.Arn
