@@ -1178,10 +1178,6 @@ export default function App() {
           </div>
         </section>
 
-        {/* ══ SETUP — below the fold ══ */}
-        <div className={`border-t ${t.divider} pt-2`}>
-          <p className={`text-xs uppercase tracking-widest ${t.faint} text-center pb-4`}>Setup &amp; tools</p>
-        </div>
 
 
         {/* ── Market Tools + Manual Trade Entry ── */}
