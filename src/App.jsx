@@ -975,9 +975,21 @@ export default function App() {
             <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
               {todaysMetrics.trades} trade{todaysMetrics.trades !== 1 ? 's' : ''}
             </div>
-            <div className={`rounded-xl px-3 py-1.5 text-sm capitalize ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
-              {tradingPhase.replace(/-/g, ' ')}
-            </div>
+            <select
+              value={selectedPhase}
+              onChange={(e) => setSelectedPhase(e.target.value)}
+              className={`rounded-xl border px-3 py-1.5 text-sm outline-none ${t.input}`}
+            >
+              {PHASE_SCHEDULE.map((p) => {
+                const hasSession = sessionsForDate.some((s) => s.phase === p.phase)
+                const isActive = p.phase === tradingPhase
+                return (
+                  <option key={p.phase} value={p.phase}>
+                    {isActive ? '▶ ' : ''}{p.label}{hasSession ? ' ✓' : ''}
+                  </option>
+                )
+              })}
+            </select>
             {lastAutoScan && (
               <div className={`rounded-xl px-3 py-1.5 text-sm ${dk ? 'bg-slate-800 text-slate-300' : 'bg-gray-200 text-gray-600'}`}>
                 {new Date(lastAutoScan).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -993,51 +1005,6 @@ export default function App() {
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-
-        {/* ── Session Navigator (Pending Decisions) ── */}
-        <section className={`${t.card} p-5`}>
-          <div className="flex items-center justify-between gap-4">
-            <h2 className={`text-base font-semibold ${t.heading}`}>Sessions</h2>
-            <span className={`shrink-0 text-xs ${t.faint}`}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ET</span>
-          </div>
-          <div className="mt-4 grid gap-2 sm:grid-cols-5">
-            {pendingDecisions.map((decision) => {
-              const hasSession = sessionsForDate.some((s) => s.phase === decision.phase)
-              const isSelected = selectedPhase === decision.phase
-              return (
-                <button
-                  key={decision.phase}
-                  type="button"
-                  onClick={() => setSelectedPhase(decision.phase)}
-                  className={`rounded-2xl border p-3 text-left transition flex flex-col justify-start ${
-                    isSelected
-                      ? dk ? 'border-blue-500 bg-blue-900/30' : 'border-blue-500 bg-blue-50'
-                      : decision.status === 'active'    ? t.decActive
-                      : decision.status === 'completed' ? t.decCompleted
-                      :                                   t.decPending
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-1">
-                    <div className="min-w-0">
-                      <p className={`text-xs ${t.faint} font-mono leading-tight`}>{decision.window}</p>
-                      <p className={`mt-1 text-sm font-semibold leading-tight ${decision.status === 'active' || isSelected ? t.heading : t.muted}`}>{decision.label}</p>
-                      {decision.events.length > 0 && (
-                        <p className="mt-1 text-xs text-emerald-500">{decision.events.length} trade{decision.events.length !== 1 ? 's' : ''}</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className={`shrink-0 w-2 h-2 rounded-full ${
-                        decision.status === 'active' ? 'bg-blue-500 animate-pulse' :
-                        decision.status === 'completed' ? 'bg-emerald-500' : 'bg-gray-300'
-                      }`} />
-                      {hasSession && <div className="w-2 h-2 rounded-full bg-blue-400" title="Session saved" />}
-                    </div>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </section>
 
         {/* ── Live Signals ── */}
         <section className={`${scanning ? (dk ? 'rounded-3xl border border-blue-800 bg-blue-950/50' : 'rounded-3xl border border-blue-200 bg-blue-50') : t.card} p-5 transition-colors duration-500`}>
