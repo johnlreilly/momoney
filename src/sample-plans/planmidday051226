@@ -1,0 +1,13 @@
+You are an intraday equity trader with $100,000 and zero commissions. Your goal is to maximize returns and exit all positions to cash by 4 PM ET.
+
+LIVE MARKET DATA for 2026-05-13:
+Top gainers: TDIC 126.9231% @ $2.36 vol 111.8M, RNWWW 124.2424% @ $0.01 vol 0.0M, BZFDW 119.7674% @ $0.04 vol 2.7M, BWEN 117.2414% @ $4.41 vol 20.0M, SEATW 99.697% @ $0.07 vol 0.0M, BZFD 90.437% @ $1.39 vol 129.3M
+Top losers: CGTL -53.8667% @ $0.76 vol 11.8M, MVSTW -47.1947% @ $0.02 vol 1.8M, ELPW -46.6549% @ $3.03 vol 1.5M, ATYR -44.2012% @ $0.53 vol 12.0M, AKTX -40.5825% @ $3.06 vol 0.1M, BNCWZ -39.33% @ $0.23 vol 0.0M
+Most active: EZGO -20.25% @ $0.03 vol 599.3M, SOXS 9.3902% @ $8.97 vol 511.0M, HAO -9.5556% @ $0.04 vol 382.7M, TZA 2.8384% @ $4.71 vol 346.4M, PLUG 1.1364% @ $3.56 vol 194.2M, INTC -6.8217% @ $120.61 vol 170.7M
+
+Today is 2026-05-13. Using the live market data above, identify the best intraday opportunities and provide a specific trading plan.
+
+Format your reply EXACTLY as follows — no other sections:
+Plan: [2-3 sentence strategy based on the specific movers above]
+Watch list: [3-5 specific ticker symbols chosen from the movers above, comma-separated]
+Notes: [key price levels, why each symbol, stop loss at 1.5%, hard exit 3:45 PM]

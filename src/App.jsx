@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useAuth, SignInButton, UserButton } from '@clerk/react'
 import { createId, loadData, saveData } from './storage.js'
+import { createApi } from './api.js'
 
 const VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev'
 const STARTING_CASH = 100000
@@ -284,17 +286,14 @@ function summarizePlan(plan) {
 
 export default function App() {
   const today = formatDate(new Date())
-  const [data, setData] = useState(() => {
-    const loaded = loadData()
-    return {
-      dailyPlans: loaded.dailyPlans || [],
-      dailySessions: loaded.dailySessions || [],
-      trades: loaded.trades || [],
-      marketData: loaded.marketData || {},
-      executedSignals: loaded.executedSignals || [],
-      activityLog: loaded.activityLog || [],
-      settings: { languageModelProvider: loaded.settings?.languageModelProvider || 'gemini' },
-    }
+  const [data, setData] = useState({
+    dailyPlans: [],
+    dailySessions: [],
+    trades: [],
+    marketData: {},
+    executedSignals: [],
+    activityLog: [],
+    settings: { languageModelProvider: 'gemini' },
   })
   const [selectedDate, setSelectedDate] = useState(today)
   const [planDraft, setPlanDraft] = useState({ response: '', watchList: '', riskProfile: 'Medium', notes: '' })
@@ -322,10 +321,30 @@ export default function App() {
   const dataRef = useRef(null)
   const marketDataRef = useRef({})
   const refreshAndScanRef = useRef(null)
+  const watchListDebounce = useRef(null)
+
+  const { getToken, isSignedIn } = useAuth()
+  const api = useMemo(() => createApi(getToken), [getToken])
+  const [dataLoading, setDataLoading] = useState(true)
 
   useEffect(() => {
-    saveData(data)
-  }, [data])
+    if (!isSignedIn) { setDataLoading(false); return }
+    api.load()
+      .then((remote) => {
+        const cached = loadData()
+        setData({ ...remote, marketData: cached.marketData || {} })
+        if (!remote.trades.length && !remote.dailySessions.length &&
+            (cached.trades.length || cached.dailySessions.length)) {
+          api.migrate(cached)
+        }
+      })
+      .catch(() => setData(loadData()))
+      .finally(() => setDataLoading(false))
+  }, [isSignedIn]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!dataLoading) saveData(data)
+  }, [data, dataLoading])
 
   useEffect(() => {
     dataRef.current = data
@@ -347,15 +366,14 @@ export default function App() {
     [sessionsForDate, selectedPhase],
   )
   function saveSession(phase, fields) {
+    const session = { id: createId(), date: selectedDate, phase, createdAt: new Date().toISOString(), ...fields }
     setData((current) => {
       const others = (current.dailySessions || []).filter(
         (s) => !(s.date === selectedDate && s.phase === phase)
       )
-      return {
-        ...current,
-        dailySessions: [...others, { id: createId(), date: selectedDate, phase, createdAt: new Date().toISOString(), ...fields }],
-      }
+      return { ...current, dailySessions: [...others, session] }
     })
+    api.saveSession(session)
   }
   function clearSession(phase) {
     setData((current) => ({
@@ -364,6 +382,7 @@ export default function App() {
         (s) => !(s.date === selectedDate && s.phase === phase)
       ),
     }))
+    api.deleteSession(selectedDate, phase)
   }
 
   const dailyTrades = useMemo(
@@ -413,6 +432,7 @@ export default function App() {
       ...current,
       trades: [...current.trades, trade],
     }))
+    api.addTrade(trade)
     setTradeDraft({ symbol: '', action: 'Buy', quantity: '', entryPrice: '', exitPrice: '', riskRating: 'Medium', notes: '' })
   }
 
@@ -421,6 +441,7 @@ export default function App() {
       ...current,
       trades: current.trades.filter((trade) => trade.id !== tradeId),
     }))
+    api.deleteTrade(tradeId)
   }
 
 
@@ -632,6 +653,13 @@ export default function App() {
       executedSignals: [...(prev.executedSignals || []), ...newExecuted],
       activityLog: [...(prev.activityLog || []).slice(-200), ...newLog],
     }))
+
+    const todayFinalTrades = finalTrades.filter((t) => t.date === todayStr)
+    Promise.all([
+      todayFinalTrades.length > 0 && api.saveTradesForDate(todayStr, todayFinalTrades),
+      newExecuted.length > 0 && api.addSignals(newExecuted),
+      newLog.length > 0 && api.addActivity(newLog),
+    ].filter(Boolean))
   }
 
   async function refreshAndScan() {
@@ -899,6 +927,28 @@ export default function App() {
     scanStatus: dk ? 'text-slate-400'   : 'text-gray-500',
   }
 
+  if (!isSignedIn) {
+    return (
+      <div className={`${t.app} flex items-center justify-center`}>
+        <div className="text-center space-y-4">
+          <h1 className={`text-2xl font-semibold ${t.heading}`}>mo' money</h1>
+          <p className={`text-sm ${t.muted}`}>Sign in to access your trading dashboard</p>
+          <SignInButton mode="modal">
+            <button type="button" className="rounded-2xl bg-blue-600 px-6 py-3 text-sm font-semibold text-white hover:bg-blue-500 transition">Sign In</button>
+          </SignInButton>
+        </div>
+      </div>
+    )
+  }
+
+  if (dataLoading) {
+    return (
+      <div className={`${t.app} flex items-center justify-center`}>
+        <p className={`text-sm ${t.muted}`}>Loading…</p>
+      </div>
+    )
+  }
+
   return (
     <div className={t.app}>
       {/* ── Header: full-width sticky, flush with top ── */}
@@ -927,6 +977,7 @@ export default function App() {
             <button type="button" onClick={toggleTheme} className={`rounded-xl px-3 py-1.5 text-sm transition ${dk ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'}`}>
               {dk ? '☀ Light' : '☾ Dark'}
             </button>
+            <UserButton />
           </div>
         </div>
       </header>
@@ -1093,6 +1144,7 @@ export default function App() {
                   ...c,
                   executedSignals: (c.executedSignals || []).filter((e) => e.date !== selectedDate),
                 }))
+                api.resetSignals(selectedDate)
               }} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Reset Signals</button>
             </div>
           </div>
@@ -1158,7 +1210,11 @@ export default function App() {
             <div className="grid gap-4 sm:grid-cols-2">
               <label className={`block text-sm font-medium ${t.body}`}>
                 AI provider
-                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider: event.target.value } }))} className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`}>
+                <select value={data.settings.languageModelProvider || 'gemini'} onChange={(event) => {
+                    const languageModelProvider = event.target.value
+                    setData((current) => ({ ...current, settings: { ...current.settings, languageModelProvider } }))
+                    api.updateSettings({ languageModelProvider })
+                  }} className={`mt-2 w-full rounded-2xl border p-3 outline-none ${t.input}`}>
                   <option value="gemini">Gemini</option>
                   <option value="openai">OpenAI</option>
                 </select>
@@ -1412,12 +1468,19 @@ export default function App() {
                     </div>
                     <textarea
                       value={activeSession.watchList}
-                      onChange={(e) => setData((current) => ({
-                        ...current,
-                        dailySessions: (current.dailySessions || []).map((s) =>
-                          s.id === activeSession.id ? { ...s, watchList: e.target.value } : s
-                        ),
-                      }))}
+                      onChange={(e) => {
+                        const newWatchList = e.target.value
+                        setData((current) => ({
+                          ...current,
+                          dailySessions: (current.dailySessions || []).map((s) =>
+                            s.id === activeSession.id ? { ...s, watchList: newWatchList } : s
+                          ),
+                        }))
+                        clearTimeout(watchListDebounce.current)
+                        watchListDebounce.current = setTimeout(() => {
+                          api.saveSession({ ...activeSession, watchList: newWatchList })
+                        }, 800)
+                      }}
                       rows={2}
                       placeholder="AAPL, NVDA, TSLA"
                       className={`w-full rounded-2xl border p-3 text-sm outline-none ${t.input}`}
