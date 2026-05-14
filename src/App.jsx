@@ -98,7 +98,7 @@ Notes: [VWAP levels, position sizing (smaller), hard exit at 3:45 PM, no overnig
 function detectGapper(symbol, yesterdayClose, currentPrice) {
   if (!yesterdayClose || !currentPrice) return 0
   const gapPercent = Math.abs((currentPrice - yesterdayClose) / yesterdayClose) * 100
-  return gapPercent >= 3 ? gapPercent : 0
+  return gapPercent >= 0.5 ? gapPercent : 0
 }
 
 function detectORB(intraday, timeWindowMinutes = 15) {
@@ -117,7 +117,7 @@ function detectORB(intraday, timeWindowMinutes = 15) {
   const range = high - low
   return {
     high, low, range, latestClose,
-    volumeConfirmed: avgOpeningVolume === 0 || latestVolume > avgOpeningVolume * 1.2,
+    volumeConfirmed: avgOpeningVolume === 0 || latestVolume > avgOpeningVolume * 0.5,
     breakoutUp: latestClose > high * 0.995,
     breakoutDown: latestClose < low * 1.005,
   }
@@ -173,7 +173,7 @@ function buildSignals(symbols, marketData) {
       const closes = intraday.map((d) => d.close)
       const rsi = calculateRSI(closes, 14)
       const ma20 = calculateMA(closes, 20)
-      if (rsi !== null && rsi > 70 && ma20) {
+      if (rsi !== null && rsi > 60 && ma20) {
         signals.push({
           id: createId(), symbol, type: 'mean-reversion', value: rsi,
           message: `${symbol}: Overbought RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
@@ -181,7 +181,7 @@ function buildSignals(symbols, marketData) {
           timestamp: new Date().toISOString(),
         })
       }
-      if (rsi !== null && rsi < 30 && ma20) {
+      if (rsi !== null && rsi < 40 && ma20) {
         signals.push({
           id: createId(), symbol, type: 'mean-reversion', value: rsi,
           message: `${symbol}: Oversold RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
@@ -195,7 +195,7 @@ function buildSignals(symbols, marketData) {
       const gain = ((quote.price - quote.previousClose) / quote.previousClose) * 100
       const vwap = intraday.length > 0 ? calculateVWAP(intraday) : null
       const aboveVwap = vwap !== null && quote.price > vwap
-      if (gain > 1) {
+      if (gain > 0.2) {
         signals.push({
           id: createId(), symbol, type: 'power-hour', value: gain,
           message: `${symbol}: +${gain.toFixed(2)}% strength${vwap ? ` | VWAP $${vwap.toFixed(2)} — price ${aboveVwap ? '↑ above' : '↓ below'}` : ''}`,
@@ -1545,6 +1545,16 @@ export default function App() {
             </section>
           )
         })()}
+      </div>
+
+      {/* ── Debug footer ── */}
+      <div className={`mt-2 mb-6 mx-auto max-w-7xl px-4`}>
+        <div className={`rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-gray-50'} px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1`}>
+          <span className={`text-xs font-semibold ${dk ? 'text-emerald-400' : 'text-emerald-600'}`}>⬡ DynamoDB</span>
+          <span className={`text-xs ${t.faint}`}>{data.trades.length} trades · {data.dailySessions.length} sessions · {(data.executedSignals || []).length} signals · {(data.activityLog || []).length} activity</span>
+          <span className={`text-xs ${dk ? 'text-amber-400' : 'text-amber-600'}`}>⚠ Demo thresholds — gap 0.5% · RSI 60/40 · power-hour 0.2%</span>
+          <span className={`text-xs ${t.faint} ml-auto`}>v{VERSION}</span>
+        </div>
       </div>
     </div>
   )
