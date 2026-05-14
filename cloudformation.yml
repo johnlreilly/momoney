@@ -71,7 +71,7 @@ Resources:
     Properties:
       FunctionName: momoney-cron
       Runtime: nodejs22.x
-      Handler: index.handler
+      Handler: cron.handler
       Role: !GetAtt CronRole.Arn
       Timeout: 30
       Environment:
