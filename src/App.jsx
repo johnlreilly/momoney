@@ -1206,9 +1206,9 @@ export default function App() {
                   <button type="button" onClick={() => setMlCardIndex((i) => Math.min(trades.length - 1, i + 1))} disabled={idx === trades.length - 1} className={`rounded-xl px-3 py-1.5 text-sm font-bold transition disabled:opacity-30 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>→</button>
                 </div>
                 {/* card */}
-                <div className={`mx-auto max-w-sm rounded-2xl border-2 ${isBuy ? 'border-emerald-500' : 'border-red-500'} ${dk ? 'bg-slate-900' : 'bg-white'} shadow-lg overflow-hidden`}>
+                <div className={`mx-auto max-w-sm rounded-2xl border-2 ${isBuy ? 'border-emerald-500' : 'border-blue-800'} ${dk ? 'bg-slate-900' : 'bg-white'} shadow-lg overflow-hidden`}>
                   {/* header */}
-                  <div className={`flex items-center justify-between px-5 py-4 ${isBuy ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                  <div className={`flex items-center justify-between px-5 py-4 ${isBuy ? 'bg-emerald-600' : 'bg-blue-900'}`}>
                     <div>
                       <p className="text-xl font-bold text-white tracking-wide">{trade.symbol}</p>
                     </div>
