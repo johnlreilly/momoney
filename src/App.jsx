@@ -1199,14 +1199,11 @@ export default function App() {
             const isBuy = trade.action === 'Buy'
             return (
               <div className="mt-4">
-                {/* nav bar */}
-                <div className="flex items-center justify-between mb-3">
-                  <button type="button" onClick={() => setMlCardIndex((i) => Math.max(0, i - 1))} disabled={idx === 0} className={`rounded-xl px-3 py-1.5 text-sm font-bold transition disabled:opacity-30 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>←</button>
-                  <span className={`text-xs font-medium ${t.muted}`}>{idx + 1} of {trades.length}</span>
-                  <button type="button" onClick={() => setMlCardIndex((i) => Math.min(trades.length - 1, i + 1))} disabled={idx === trades.length - 1} className={`rounded-xl px-3 py-1.5 text-sm font-bold transition disabled:opacity-30 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>→</button>
-                </div>
-                {/* card */}
-                <div className={`mx-auto max-w-sm rounded-2xl border-2 ${isBuy ? 'border-emerald-500' : 'border-blue-800'} ${dk ? 'bg-slate-900' : 'bg-white'} shadow-lg overflow-hidden`}>
+                <p className={`text-center text-xs font-medium ${t.muted} mb-3`}>{idx + 1} of {trades.length}</p>
+                {/* card + flanking arrows */}
+                <div className="flex items-center gap-3">
+                  <button type="button" onClick={() => setMlCardIndex((i) => Math.max(0, i - 1))} disabled={idx === 0} className={`flex-shrink-0 rounded-2xl px-4 py-6 text-2xl font-bold transition disabled:opacity-20 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>←</button>
+                <div className={`flex-1 rounded-2xl border-2 ${isBuy ? 'border-emerald-500' : 'border-blue-800'} ${dk ? 'bg-slate-900' : 'bg-white'} shadow-lg overflow-hidden`}>
                   {/* header */}
                   <div className={`flex items-center justify-between px-5 py-4 ${isBuy ? 'bg-emerald-600' : 'bg-blue-900'}`}>
                     <div>
@@ -1257,6 +1254,8 @@ export default function App() {
                       </div>
                     )}
                   </div>
+                </div>
+                  <button type="button" onClick={() => setMlCardIndex((i) => Math.min(trades.length - 1, i + 1))} disabled={idx === trades.length - 1} className={`flex-shrink-0 rounded-2xl px-4 py-6 text-2xl font-bold transition disabled:opacity-20 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>→</button>
                 </div>
               </div>
             )
