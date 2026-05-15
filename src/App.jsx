@@ -98,7 +98,7 @@ Notes: [VWAP levels, position sizing (smaller), hard exit at 3:45 PM, no overnig
 function detectGapper(symbol, yesterdayClose, currentPrice) {
   if (!yesterdayClose || !currentPrice) return 0
   const gapPercent = Math.abs((currentPrice - yesterdayClose) / yesterdayClose) * 100
-  return gapPercent >= 0.5 ? gapPercent : 0
+  return gapPercent >= 0.1 ? gapPercent : 0
 }
 
 function detectORB(intraday, timeWindowMinutes = 15) {
@@ -118,8 +118,8 @@ function detectORB(intraday, timeWindowMinutes = 15) {
   return {
     high, low, range, latestClose,
     volumeConfirmed: avgOpeningVolume === 0 || latestVolume > avgOpeningVolume * 0.5,
-    breakoutUp: latestClose > high * 0.995,
-    breakoutDown: latestClose < low * 1.005,
+    breakoutUp: latestClose > high * 0.98,
+    breakoutDown: latestClose < low * 1.02,
   }
 }
 
@@ -173,7 +173,7 @@ function buildSignals(symbols, marketData) {
       const closes = intraday.map((d) => d.close)
       const rsi = calculateRSI(closes, 14)
       const ma20 = calculateMA(closes, 20)
-      if (rsi !== null && rsi > 60 && ma20) {
+      if (rsi !== null && rsi > 55 && ma20) {
         signals.push({
           id: createId(), symbol, type: 'mean-reversion', value: rsi,
           message: `${symbol}: Overbought RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
@@ -181,7 +181,7 @@ function buildSignals(symbols, marketData) {
           timestamp: new Date().toISOString(),
         })
       }
-      if (rsi !== null && rsi < 40 && ma20) {
+      if (rsi !== null && rsi < 45 && ma20) {
         signals.push({
           id: createId(), symbol, type: 'mean-reversion', value: rsi,
           message: `${symbol}: Oversold RSI ${rsi.toFixed(1)} — MA20 $${ma20.toFixed(2)}`,
@@ -195,7 +195,7 @@ function buildSignals(symbols, marketData) {
       const gain = ((quote.price - quote.previousClose) / quote.previousClose) * 100
       const vwap = intraday.length > 0 ? calculateVWAP(intraday) : null
       const aboveVwap = vwap !== null && quote.price > vwap
-      if (gain > 0.2) {
+      if (gain > 0.05) {
         signals.push({
           id: createId(), symbol, type: 'power-hour', value: gain,
           message: `${symbol}: +${gain.toFixed(2)}% strength${vwap ? ` | VWAP $${vwap.toFixed(2)} — price ${aboveVwap ? '↑ above' : '↓ below'}` : ''}`,
@@ -323,6 +323,8 @@ export default function App() {
   const [tradingPhase, setTradingPhase] = useState(updateTradingPhase)
   const [selectedPhase, setSelectedPhase] = useState(updateTradingPhase)
   const [lastAutoScan, setLastAutoScan] = useState(null)
+  const [mlCardIndex, setMlCardIndex] = useState(0)
+  const [mlCardOpen, setMlCardOpen] = useState(false)
   const dataRef = useRef(null)
   const marketDataRef = useRef({})
   const refreshAndScanRef = useRef(null)
@@ -488,6 +490,25 @@ export default function App() {
     api.deleteTrade(tradeId)
   }
 
+
+  function seedSampleTrades() {
+    const seeds = [
+      { symbol: 'NVDA', action: 'Buy',  quantity: 137, entryPrice: 728.50, exitPrice: 739.43, riskRating: 'Medium', notes: 'Auto [orb-breakout]: NVDA ORB breakout above $727.80 ✓ vol', hour: 9.75 },
+      { symbol: 'AAPL', action: 'Buy',  quantity: 162, entryPrice: 185.20, exitPrice: 187.95, riskRating: 'Low',    notes: 'Auto [gapper]: AAPL 1.4% gap at $185.20', hour: 8.5 },
+      { symbol: 'TSLA', action: 'Sell', quantity:  95, entryPrice: 248.60, exitPrice: 244.30, riskRating: 'High',   notes: 'Auto [mean-reversion]: TSLA Overbought RSI 63.2 — MA20 $244.10', hour: 11.5 },
+      { symbol: 'META', action: 'Buy',  quantity:  72, entryPrice: 521.40, exitPrice: 529.20, riskRating: 'Medium', notes: 'Auto [power-hour]: META +0.8% strength | VWAP $519.60 — price ↑ above', hour: 15.2 },
+      { symbol: 'SPY',  action: 'Buy',  quantity: 248, entryPrice: 521.80, exitPrice: 524.50, riskRating: 'Low',    notes: 'Auto [orb-breakout]: SPY ORB breakout above $521.40 ✓ vol', hour: 10.1 },
+    ]
+    const newTrades = seeds.map(({ hour, ...s }) => {
+      const d = new Date()
+      d.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0)
+      return { id: createId(), date: selectedDate, createdAt: d.toISOString(), ...s }
+    })
+    setData((current) => ({ ...current, trades: [...current.trades, ...newTrades] }))
+    newTrades.forEach((t) => api.addTrade(t))
+    setMlCardIndex(0)
+    setMlCardOpen(true)
+  }
 
   async function fetchMarketQuote() {
     const symbol = (marketSymbol || tradeDraft.symbol).trim().toUpperCase()
@@ -1153,7 +1174,9 @@ export default function App() {
               <h2 className={`text-base font-semibold ${t.heading}`}>Trades — {displayDate(selectedDate)}</h2>
               <p className={`text-xs ${t.faint} mt-0.5`}>{PHASE_SCHEDULE.find((p) => p.phase === selectedPhase)?.label} · {filteredDailyTrades.length} of {dailyTrades.length}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => { setMlCardIndex(0); setMlCardOpen((v) => !v) }} className={`rounded-xl px-3 py-1.5 text-xs font-semibold transition ${mlCardOpen ? 'bg-sky-600 text-white hover:bg-sky-500' : dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>ML Order View</button>
+              <button type="button" onClick={seedSampleTrades} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Seed Sample Trades</button>
               <button type="button" onClick={exportDayCsv} className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-500">Export Day</button>
               <button type="button" onClick={exportAllCsv} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-200' : 'bg-gray-300 text-gray-700'} px-3 py-1.5 text-xs font-semibold transition hover:opacity-80`}>Export All</button>
               <button type="button" onClick={() => {
@@ -1165,6 +1188,83 @@ export default function App() {
               }} className={`rounded-xl ${dk ? 'bg-slate-700 text-slate-300 hover:bg-slate-600' : 'bg-gray-200 text-gray-600 hover:bg-gray-300'} px-3 py-1.5 text-xs font-semibold transition`}>Reset Signals</button>
             </div>
           </div>
+
+          {/* ── ML Order Card View ── */}
+          {mlCardOpen && (() => {
+            const trades = filteredDailyTrades
+            if (trades.length === 0) return (
+              <p className={`mt-4 text-sm ${t.faint}`}>No trades to display — seed some first.</p>
+            )
+            const idx = Math.min(mlCardIndex, trades.length - 1)
+            const trade = trades[idx]
+            const pl = computeTradePL(trade)
+            const estTotal = trade.entryPrice * trade.quantity
+            const isBuy = trade.action === 'Buy'
+            return (
+              <div className="mt-4">
+                {/* nav bar */}
+                <div className="flex items-center justify-between mb-3">
+                  <button type="button" onClick={() => setMlCardIndex((i) => Math.max(0, i - 1))} disabled={idx === 0} className={`rounded-xl px-3 py-1.5 text-sm font-bold transition disabled:opacity-30 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>←</button>
+                  <span className={`text-xs font-medium ${t.muted}`}>{idx + 1} of {trades.length}</span>
+                  <button type="button" onClick={() => setMlCardIndex((i) => Math.min(trades.length - 1, i + 1))} disabled={idx === trades.length - 1} className={`rounded-xl px-3 py-1.5 text-sm font-bold transition disabled:opacity-30 ${dk ? 'bg-slate-700 text-slate-200 hover:bg-slate-600' : 'bg-gray-200 text-gray-700 hover:bg-gray-300'}`}>→</button>
+                </div>
+                {/* card */}
+                <div className={`mx-auto max-w-sm rounded-2xl border-2 ${isBuy ? 'border-emerald-500' : 'border-red-500'} ${dk ? 'bg-slate-900' : 'bg-white'} shadow-lg overflow-hidden`}>
+                  {/* header */}
+                  <div className={`flex items-center justify-between px-5 py-4 ${isBuy ? 'bg-emerald-600' : 'bg-red-600'}`}>
+                    <div>
+                      <p className="text-xl font-bold text-white tracking-wide">{trade.symbol}</p>
+                    </div>
+                    <span className="text-lg font-bold text-white">{trade.action.toUpperCase()}</span>
+                  </div>
+                  {/* body */}
+                  <div className="px-5 py-4 space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className={`text-xs ${t.faint} uppercase tracking-wide`}>Order Type</p>
+                        <p className={`text-sm font-semibold ${t.heading} mt-0.5`}>Limit</p>
+                      </div>
+                      <div>
+                        <p className={`text-xs ${t.faint} uppercase tracking-wide`}>Duration</p>
+                        <p className={`text-sm font-semibold ${t.heading} mt-0.5`}>Day</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className={`text-xs ${t.faint} uppercase tracking-wide`}>Shares</p>
+                      <p className={`text-2xl font-bold ${t.heading} mt-0.5`}>{trade.quantity.toLocaleString()}</p>
+                    </div>
+                    <div>
+                      <p className={`text-xs ${t.faint} uppercase tracking-wide`}>Limit Price (per share)</p>
+                      <p className={`text-2xl font-bold ${t.heading} mt-0.5`}>${trade.entryPrice.toFixed(2)}</p>
+                    </div>
+                    <div className={`border-t ${t.divider} pt-3 space-y-1`}>
+                      <div className="flex justify-between">
+                        <span className={`text-sm ${t.muted}`}>Est. Total</span>
+                        <span className={`text-sm font-semibold ${t.heading}`}>${estTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                      </div>
+                    </div>
+                    <div className={`border-t ${t.divider} pt-3 space-y-1`}>
+                      <div className="flex justify-between">
+                        <span className={`text-sm ${t.muted}`}>Exit Target</span>
+                        <span className={`text-sm font-semibold ${t.heading}`}>${trade.exitPrice.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className={`text-sm ${t.muted}`}>Est. P/L</span>
+                        <span className={`text-sm font-bold ${pl >= 0 ? t.plGain : t.plLoss}`}>{pl >= 0 ? '+' : ''}${pl.toFixed(2)}</span>
+                      </div>
+                    </div>
+                    {trade.notes && (
+                      <div className={`border-t ${t.divider} pt-3`}>
+                        <p className={`text-xs ${t.faint} uppercase tracking-wide mb-1`}>Notes</p>
+                        <p className={`text-xs ${t.muted} leading-relaxed`}>{trade.notes}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })()}
+
           <div className={`mt-4 overflow-x-auto rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-white'}`}>
             <table className="min-w-full border-collapse text-left text-sm">
               <thead className={`${dk ? 'bg-slate-800 text-slate-400' : 'bg-gray-50 text-gray-500'}`}>
@@ -1409,7 +1509,7 @@ export default function App() {
               const aiText = result?.text?.trim() || ''
               if (!aiText) throw new Error('AI returned empty response')
               const parsed = parseAiPlanResponse(aiText)
-              saveSession(selectedPhase, { response: parsed.plan, watchList: parsed.watchList, notes: parsed.notes })
+              saveSession(selectedPhase, { response: aiText, watchList: parsed.watchList, notes: parsed.notes })
               setPlanStatus(`Session generated for ${phaseInfo?.label}.`)
             } catch (err) {
               setPlanStatus(err.message || 'AI generation failed.')
@@ -1552,7 +1652,7 @@ export default function App() {
         <div className={`rounded-2xl border ${t.divider} ${dk ? 'bg-slate-900/60' : 'bg-gray-50'} px-4 py-3 flex flex-wrap items-center gap-x-6 gap-y-1`}>
           <span className={`text-xs font-semibold ${dk ? 'text-emerald-400' : 'text-emerald-600'}`}>⬡ DynamoDB</span>
           <span className={`text-xs ${t.faint}`}>{data.trades.length} trades · {data.dailySessions.length} sessions · {(data.executedSignals || []).length} signals · {(data.activityLog || []).length} activity</span>
-          <span className={`text-xs ${dk ? 'text-amber-400' : 'text-amber-600'}`}>⚠ Demo thresholds — gap 0.5% · RSI 60/40 · power-hour 0.2%</span>
+          <span className={`text-xs ${dk ? 'text-amber-400' : 'text-amber-600'}`}>⚠ Demo thresholds — gap 0.1% · RSI 55/45 · power-hour 0.05%</span>
           <span className={`text-xs ${t.faint} ml-auto`}>v{VERSION}</span>
         </div>
       </div>
