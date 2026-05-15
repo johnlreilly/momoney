@@ -493,17 +493,14 @@ export default function App() {
 
   function seedSampleTrades() {
     const seeds = [
-      { symbol: 'NVDA', action: 'Buy',  quantity: 137, entryPrice: 728.50, exitPrice: 739.43, riskRating: 'Medium', notes: 'Auto [orb-breakout]: NVDA ORB breakout above $727.80 ✓ vol', hour: 9.75 },
-      { symbol: 'AAPL', action: 'Buy',  quantity: 162, entryPrice: 185.20, exitPrice: 187.95, riskRating: 'Low',    notes: 'Auto [gapper]: AAPL 1.4% gap at $185.20', hour: 8.5 },
-      { symbol: 'TSLA', action: 'Sell', quantity:  95, entryPrice: 248.60, exitPrice: 244.30, riskRating: 'High',   notes: 'Auto [mean-reversion]: TSLA Overbought RSI 63.2 — MA20 $244.10', hour: 11.5 },
-      { symbol: 'META', action: 'Buy',  quantity:  72, entryPrice: 521.40, exitPrice: 529.20, riskRating: 'Medium', notes: 'Auto [power-hour]: META +0.8% strength | VWAP $519.60 — price ↑ above', hour: 15.2 },
-      { symbol: 'SPY',  action: 'Buy',  quantity: 248, entryPrice: 521.80, exitPrice: 524.50, riskRating: 'Low',    notes: 'Auto [orb-breakout]: SPY ORB breakout above $521.40 ✓ vol', hour: 10.1 },
+      { symbol: 'NVDA', action: 'Buy',  quantity: 137, entryPrice: 728.50, exitPrice: 739.43, riskRating: 'Medium', notes: 'Auto [orb-breakout]: NVDA ORB breakout above $727.80 ✓ vol' },
+      { symbol: 'AAPL', action: 'Buy',  quantity: 162, entryPrice: 185.20, exitPrice: 187.95, riskRating: 'Low',    notes: 'Auto [gapper]: AAPL 1.4% gap at $185.20' },
+      { symbol: 'TSLA', action: 'Sell', quantity:  95, entryPrice: 248.60, exitPrice: 244.30, riskRating: 'High',   notes: 'Auto [mean-reversion]: TSLA Overbought RSI 63.2 — MA20 $244.10' },
+      { symbol: 'META', action: 'Buy',  quantity:  72, entryPrice: 521.40, exitPrice: 529.20, riskRating: 'Medium', notes: 'Auto [power-hour]: META +0.8% strength | VWAP $519.60 — price ↑ above' },
+      { symbol: 'SPY',  action: 'Buy',  quantity: 248, entryPrice: 521.80, exitPrice: 524.50, riskRating: 'Low',    notes: 'Auto [orb-breakout]: SPY ORB breakout above $521.40 ✓ vol' },
     ]
-    const newTrades = seeds.map(({ hour, ...s }) => {
-      const d = new Date()
-      d.setHours(Math.floor(hour), Math.round((hour % 1) * 60), 0, 0)
-      return { id: createId(), date: selectedDate, createdAt: d.toISOString(), ...s }
-    })
+    const now = new Date().toISOString()
+    const newTrades = seeds.map((s) => ({ id: createId(), date: selectedDate, createdAt: now, ...s }))
     setData((current) => ({ ...current, trades: [...current.trades, ...newTrades] }))
     newTrades.forEach((t) => api.addTrade(t))
     setMlCardIndex(0)
